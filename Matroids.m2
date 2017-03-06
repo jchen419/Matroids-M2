@@ -303,8 +303,8 @@ dualMatroid Matroid := Matroid => M -> matroid(groundSet M, (bases M)/(b -> M.gr
 restriction = method()
 restriction (Matroid, Set) := Matroid => (M, S) -> (
 	newrank := rk_M S;
-	newbases := unique select((bases M)/(b -> S*b), b -> #b == newrank);
-	matroid(groundSet_M S, newbases/(b -> indicesOf(groundSet_M S, groundSet_M b)))
+	newbases := unique select((bases M)/(b -> S*b), b -> #b == newrank); S = toList S;
+	matroid(groundSet_M S, newbases/(b -> indicesOf(S, toList b)))
 )
 restriction (Matroid, List) := Matroid => (M, S) -> restriction(M, set S)
 
@@ -571,8 +571,7 @@ doc ///
 			Matroids are stored as pairs (E, B) of a ground set E and a list of bases, which are sets of elements of the ground set. Internally, a ground set of size n is always identified with the list $\{0, ..., n-1\}$, and thus all subsets of the ground set (e.g. bases, circuits, flats) also must be subsets of $\{0, ..., n-1\}$. However, the actual elements of the ground set are stored separately, and allowed to be arbitrary (e.g. integers, variables, vectors, edges in a graph). @BR{}@ @BR{}@
 			The package provides capabilities for converting between various representations of matroids, directly creating linear and graphic matroids from a matrix or graph, creating and detecting existence of minors, computing Tutte polynomials, and some additional functions for matroid applications in other areas. @BR{}@ @BR{}@
 			The user can specify a matroid can by either its bases, nonbases, circuits, from a matrix or graph, or via a collection of predefined matroids. For more on how to construct a matroid, see @TO matroid@. @BR{}@ @BR{}@
-			{\bf Reference} @BR{}@
-			@UL {LI {"Oxley, ", EM "Matroid Theory, ", "Second Edition. Oxford University Press, 2011."}}@
+			{\bf Reference} Oxley, Matroid Theory, second edition. Oxford University Press, 2011.
 ///
 
 doc ///
@@ -1147,6 +1146,8 @@ doc ///
 	SeeAlso
 		flats
 		rk
+	Caveat
+		This is not the same as the f-vector of the independence complex of the matroid M.
 ///
 
 doc ///
@@ -1923,3 +1924,5 @@ M = matroid({a,b,c,d},{{0,1},{0,2}})
 matroid(toList (1..4),{{1,2},{1,3}},EntryMethod=>"nonbases") -- Not a matroid
 
 matroid graph({{0,1},{1,2},{0,2},{0,0},{3,4},{4,5},{3,5},{3,3},{5,5}})
+
+M = matroid matrix{{1,0,1,1},{0,1,1,1}} -- parallel elements (test deletion, tuttePolynomial)
