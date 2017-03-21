@@ -43,6 +43,7 @@ export {
 	"tutte2",
 	"tutteEvaluate",
 	"chromaticPolynomial",
+	"characteristicPolynomial",
 	"uniformMatroid",
 	"getCycles",
 	"getClosedWalks",
@@ -198,42 +199,14 @@ fundamentalCircuit (Matroid, List, ZZ) := List => (M, B, e) -> (
 )
 fundamentalCircuit (Matroid, Set, ZZ) := List => (M, B, e) -> fundamentalCircuit(M, toList B, e)
 
-boundedUnion = method()
-boundedUnion (List, ZZ) := Set => (L, n) -> (
-	U := set {};
-	for l in L do (
-		U = U + l;
-		if #U == n then break;
-	);
-	U
-)
-
-intersection = method()
-intersection List := Set => L -> (
-	I := L#0;
-	for i from 1 to #L - 1 do (
-		I = I*(L#i);
-		if #I == 0 then break;
-	);
-	I
-)
-
 loops = method()
-loops Matroid := List => M -> ( toList(M.ground - flatten(bases M/(b -> toList b)))
-	{*if M.cache.?circuits then flatten select(circuits M, c -> #c == 1)
-	else toList(M.ground - boundedUnion(bases M, #M.ground))*}
-)
+loops Matroid := List => M -> toList(M.ground - flatten(bases M/(b -> toList b)))
 
 coloops = method()
-coloops Matroid := List => M -> ( loops dualMatroid M
-	{*if M.cache.?circuits then toList(M.ground - boundedUnion(M.cache.circuits, #M.ground))
-	else toList intersection(bases M)*}
-)
+coloops Matroid := List => M -> loops dualMatroid M
 
 minimals = method()
-minimals (List, List) := List => (L, L') -> (
-	join(L, select(L', b -> not any(L, a -> isSubset(a, b))))
-)
+minimals (List, List) := List => (L, L') -> join(L, select(L', b -> not any(L, a -> isSubset(a, b))))
 
 independents = method()
 independents (Matroid, ZZ) := List => (M, r) -> unique flatten(bases M/(b -> subsets(b, r)))
@@ -369,11 +342,10 @@ representationOf Matroid := Thing => M -> (
 
 isRepresentable = method() -- Determines if M is representable over a finite extension of k
 isRepresentable (Matroid, Ring) := Boolean => (M, k) -> (
-	local x, local y;
 	r := rk M;
 	b := #bases M;
 	n := #M.ground;
-	x = symbol x, y = symbol y;
+	x := symbol x, y := symbol y;
 	S := k[x_{1,1}..x_{r,n},y_1..y_b];
 	A := genericMatrix(S, r, n);
 	I := ideal(0_S);
@@ -429,18 +401,20 @@ tuttePolynomial Matroid := RingElement => M -> (
 tutte2 = method() -- Non-recursive computation, computing ranks of all subsets of ground set (slow)
 tutte2 Matroid := RingElement => M -> (
 	R := ZZ(monoid[getSymbol "x", getSymbol "y"]);
-	f := 0_R;
 	r := rk M;
-	for S in subsets M.ground do (
-		f = f + (R_0-1_R)^(r - rk_M S)*(R_1-1_R)^(#S - rk_M S);
-	);
-	f
+	sum(subsets(M.ground)/(S -> (R_0-1_R)^(r - rk_M S)*(R_1-1_R)^(#S - rk_M S)))
 )
 
 tutteEvaluate = method()
 tutteEvaluate (Matroid, Thing, Thing) := Thing => (M, a, b) -> (
 	T := tuttePolynomial M;
 	sub(T, {(ring T)_0 => a, (ring T)_1 => b})
+)
+
+characteristicPolynomial = method()
+characteristicPolynomial Matroid := RingElement => M -> (
+	T := tuttePolynomial M;
+	(-1)^(rk M)*sub(T, {(ring T)_0 => 1 - (ring T)_0, (ring T)_1 => 0})
 )
 
 chromaticPolynomial = method()
@@ -452,7 +426,7 @@ chromaticPolynomial Graph := RingElement => G -> chromaticPolynomial(G, ZZ(monoi
 
 uniformMatroid = method()
 uniformMatroid (ZZ, ZZ) := Matroid => (k, n) -> (
-	if k > n or k < 0 then error "k must be an integer between 0 and n.";
+	if k > n or k < 0 then error(toString k | " is not an integer between 0 and " | toString n);
 	matroid(toList (0..<n), subsets(n, k), EntryMethod => "bases")
 )
 
@@ -484,7 +458,7 @@ getClosedWalks (Graph, Thing, ZZ) := List => (G, v, l) -> ( -- Returns walks at 
 )
 
 cycleEdges = method()
-cycleEdges List := List => C -> (
+cycleEdges List := List => C -> ( 
 	cycle := {};
 	for i from 0 to #C-2 do cycle = append(cycle, set {C#i, C#(i+1)});
 	cycle
@@ -519,8 +493,7 @@ greedyAlgorithm (Matroid, List) := List => (M, w) -> (
 
 idealCohomologyRing = method()
 idealCohomologyRing Matroid := Ideal => M -> (
-	local x;
-	x = symbol x;
+	x := symbol x;
 	F := delete({}, delete(toList M.ground, (flatten flats M)/(f -> toList f)));
 	R := QQ[x_1..x_#F];
 	incomparablePairs := select(subsets(toList(0..<#F), 2), s -> not isSubset(F#(s#0), F#(s#1)));
@@ -530,17 +503,19 @@ idealCohomologyRing Matroid := Ideal => M -> (
 	I1 + I2
 )
 
-needsPackage "Dmodules"
+--needsPackage "Dmodules"
 cogeneratorCohRing = method()
 cogeneratorCohRing Matroid := RingElement => M -> (
-	local x, local t;
-	x = symbol x, t = symbol t;
+	t := symbol t;
 	I := trim idealCohomologyRing M;
 	L := toList(1..#(gens ring I));
 	print("Computed defining ideal in " | #L | " variables.");
-	W := QQ[join(L/(i -> t_i), L/(i -> x_i)), WeylAlgebra => L/(i -> t_i => x_i)];
+	W := (ring I)[L/(i -> t_i)];
+	p := value last factor((sum(L/(i -> t_i*(gens ring I)_(i-1))))^(rk M - 1) % (map(W, ring I))(I));
+	(map(QQ[gens ring p], ring p)) p
+	{*W := QQ[join(L/(i -> t_i), L/(i -> x_i)), WeylAlgebra => L/(i -> t_i => x_i)];
 	phi := map(W, ring I, L/(i -> x_i));
-	time last PolySols phi I
+	time last PolySols phi I*}
 )
 
 specificMatroids = method()
