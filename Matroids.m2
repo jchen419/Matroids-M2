@@ -148,7 +148,7 @@ isWellDefined Matroid := Boolean => M -> (
 		if debugLevel > 0 then << "-- expected `bases' to be a list of subsets of `ground'" << endl;
 		return false
 	);
-	if not M.rank === #((M.bases)#0) then (
+	if not all(bases M, b -> #b === M.rank) then (
 		if debugLevel > 0 then << "-- expected `rank' to be the size of all bases" << endl;
 		return false
 	);
@@ -347,6 +347,7 @@ hasMinor (Matroid, Matroid) := Boolean => (M, N) -> (
 
 Matroid + Matroid := (M, M') -> (
 	if not M_* === M'_* then (
+		if #set(M_*) < #(M_*) or #set(M'_*) < #(M'_*) then error "Cannot have duplicate elements in M (or M') - see help page for details";
 		E := unique(M_* | M'_*);
 		H := hashTable apply(#M'.groundSet, i -> i => position(E, e -> e === M'_i));
 		return matroid(E, bases M) + matroid(E, bases M'/(b -> b/(i -> H#i)));
@@ -547,11 +548,6 @@ idealChowRing Matroid := Ideal => M -> (
 	I2 := ideal(select(subsets(F, 2), s -> #unique(s#0 | s#1) > max(#(s#0), #(s#1)))/(p -> x_(p#0)*x_(p#1)));
 	L0 := sum(select(F, f -> member(0, f))/(f -> x_f));
 	I2 + ideal((1..#M.groundSet-1)/(i -> sum(select(F, f -> member(i, f))/(f -> x_f)) - L0))
-	{*incomparablePairs := select(subsets(F, 2), s -> #unique(s#0 | s#1) > max(#(s#0), #(s#1)));
-	I2 := ideal(incomparablePairs/(pair -> x_(pair#0)*x_(pair#1)));
-	linearPairs := subsets(#M.groundSet, 2)/(s -> {select(F, f -> member(s#0, f)), select(F, f -> member(s#1,f))});
-	I1 := ideal(linearPairs/(pair -> sum(pair#0/(i -> x_i)) - sum(pair#1/(i -> x_i))));
-	I1 + I2*}
 )
 
 cogeneratorChowRing = method()
@@ -559,8 +555,8 @@ cogeneratorChowRing Matroid := RingElement => M -> ( -- sorted flats makes this 
 	t := symbol t;
 	I := trim idealChowRing M;
 	R := ring I;
-	W := R[apply(#gens R, i -> t_i)];
-	sub(value (factor((sum(#gens R, i -> t_i*R_i))^(rank M - 1) % sub(I, W)))#1, QQ[gens W])
+	W := R[apply(gens R, v -> t_(last baseName v))];
+	sub(value (factor((sum(#gens R, i -> W_i*R_i))^(rank M - 1) % sub(I, W)))#1, QQ[gens W])
 )
 
 specificMatroids = method()
@@ -2633,7 +2629,7 @@ doc ///
 			M = matroid({{0,1},{0,2},{0,3},{1,2},{2,3}})
 			n = #M.groundSet
 			P = polytope M
-			E = faces(n - 2, P)/vertices -- edges of P
+			E = Polyhedra$faces(n - 2, P)/Polyhedra$vertices -- edges of P
 			all(E, e -> sort flatten entries(e_0 - e_1) == ({-1} | toList(n-2:0) | {1})) -- GGMS criterion
 	SeeAlso
 		(independenceComplex, Matroid)
