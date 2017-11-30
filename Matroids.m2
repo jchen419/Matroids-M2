@@ -148,7 +148,7 @@ isWellDefined Matroid := Boolean => M -> (
 		if debugLevel > 0 then << "-- expected `bases' to be a list of subsets of `ground'" << endl;
 		return false
 	);
-	if not all(bases M, b -> #b === M.rank) then (
+	if not all(M.bases, b -> #b === M.rank) then (
 		if debugLevel > 0 then << "-- expected `rank' to be the size of all bases" << endl;
 		return false
 	);
