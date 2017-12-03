@@ -1,15 +1,15 @@
 newPackage("Matroids",
 	AuxiliaryFiles => false,
-	Version => "0.9.1",
-	Date => "November 27, 2017",
+	Version => "0.9.2",
+	Date => "December 2, 2017",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
 		HomePage => "https://math.berkeley.edu/~jchen"}},
 	Headline => "a package for computations with matroids",
 	HomePage => "https://github.com/jchen419/Matroids-M2",
-	PackageImports => {"Graphs", "Posets", "Polyhedra"},
-	PackageExports => {"Graphs", "Posets", "Polyhedra"},
+	PackageImports => {"Graphs", "Posets"},
+	PackageExports => {"Graphs", "Posets"},
 	DebuggingMode => true
 )
 export {
@@ -27,6 +27,7 @@ export {
 	"coloops",
 	"isDependent",
 	"closure",
+	"hyperplanes",
 	"flats",
 	"latticeOfFlats",
 	"restriction",
@@ -42,6 +43,7 @@ export {
 	"uniformMatroid",
 	"affineMatroid",
 	"getCycles",
+	"basisIndicatorMatrix",
 	"maxWeightBasis",
 	"idealChowRing",
 	"cogeneratorChowRing",
@@ -247,6 +249,12 @@ closure (Matroid, Set) := Set => (M, S) -> (
 	S + limits
 )
 
+hyperplanes = method()
+hyperplanes Matroid := List => M -> (
+	if not M.cache.?hyperplanes then M.cache.hyperplanes = (circuits dual M)/(c -> M.groundSet - c);
+	M.cache.hyperplanes
+)
+
 flats = method()
 flats (Matroid, ZZ) := List => (M, r) -> ( -- returns flats of rank r
 	if r > rank M or r < 0 then return {};
@@ -277,11 +285,6 @@ sort (List, Function) := opts -> (L, f) -> (
 
 latticeOfFlats = method()
 latticeOfFlats Matroid := Poset => M -> poset(flats M/toList, (a, b) -> isSubset(a, b))
-
-hyperplanes Matroid := List => M -> (
-	if not M.cache.?hyperplanes then M.cache.hyperplanes = (circuits dual M)/(c -> M.groundSet - c);
-	M.cache.hyperplanes
-)
 
 fVector Matroid := List => M -> (rankPoset latticeOfFlats M)/(f -> #f)
 
@@ -511,9 +514,10 @@ getClosedWalks (Graph, Thing, ZZ) := List => (G, v, l) -> ( -- Returns walks at 
 	walks
 )
 
-polytope Matroid := Polyhedron => M -> (
+basisIndicatorMatrix = method()
+basisIndicatorMatrix Matroid := Matrix => M -> (
 	initVector := toList M.groundSet;
-	convexHull transpose matrix(bases M/(b -> initVector/(i -> if member(i, b) then 1 else 0)))
+	transpose matrix(bases M/(b -> initVector/(i -> if member(i, b) then 1 else 0)))
 )
 
 independenceComplex Matroid := SimplicialComplex => M -> simplicialComplex ideal M
@@ -571,7 +575,7 @@ specificMatroids String := Matroid => name -> (
 	) else if name == "AG32" then (
 		affineMatroid matrix{{0_(ZZ/2),0,0,0,1,1,1,1},{0,0,1,1,0,0,1,1},{0,1,0,1,0,1,0,1}}
 	) else if name == "R10" then (
-		matroid(id_((ZZ/2)^5) | matrix{{1_(ZZ/2),1,0,0,1},{1,1,1,0,0},{0,1,1,1,0},{0,0,1,1,1},{1,0,0,1,1}})
+		matroid(id_((ZZ/2)^5) | matrix{{-1_(ZZ/2),1,0,0,1},{1,-1,1,0,0},{0,1,-1,1,0},{0,0,1,-1,1},{1,0,0,1,-1}})
 	) else error "Name string must be one of: fano, nonfano, V8+, vamos, pappus, nonpappus, AG32, R10"
 )
 
@@ -724,7 +728,6 @@ doc ///
 			ideal U24
 			peek U24
 			tuttePolynomial U24
-			polytope U24
 			N = U24 / {0}
 			areIsomorphic(N, uniformMatroid(1, 3))
 			L = allMatroids 4
@@ -1678,10 +1681,10 @@ doc ///
 		Example
 			M = matroid({a,b,c,d},{{a,b},{a,c}})
 			hyperplanes M
-	Caveat
-		This method is not to be confused with the method @TO hyperplanes@
-		in the @TO Polyhedra@ package, which refers to the affine hyperplanes
-		defining a polyhedron.
+	-- Caveat
+		-- This method is not to be confused with the method @TO hyperplanes@
+		-- in the @TO Polyhedra@ package, which refers to the affine hyperplanes
+		-- defining a polyhedron.
 	SeeAlso
 		flats
 		(rank, Matroid)
@@ -2608,21 +2611,20 @@ doc ///
 
 doc ///
 	Key
-		(polytope, Matroid)
+		basisIndicatorMatrix
+		(basisIndicatorMatrix, Matroid)
 	Headline
-		matroid polytope
+		matrix of basis polytope
 	Usage
-		polytope M
+		basisIndicatorMatrix M
 	Inputs
 		M:Matroid
 	Outputs
-		:Polyhedron
+		:Matrix
 	Description
 		Text
 			The matroid (basis) polytope of a matroid on n elements lives in 
 			R^n, and is the convex hull of the indicator vectors of the bases.
-			This method uses the @TO Polyhedra@ package to return an 
-			object of type @TO Polyhedron@.
 			
 			The matroid polytope is contained in the independence complex
 			of the matroid.
@@ -2630,23 +2632,33 @@ doc ///
 			For uniform matroids, the basis polytope is precisely the hypersimplex:
 		
 		Example
-			P = polytope uniformMatroid(2, 4)
+			U24 = uniformMatroid(2, 4)
+			A = basisIndicatorMatrix U24
+		Text
+		
+			In order to obtain an actual polytope, one needs to take the convex
+			hull of the columns of the indicator matrix, which is provided by the
+			Polyhedra package:
+			
+		Example
+			needsPackage "Polyhedra"
+			P = convexHull A
 			vertices P
 		Text
 
-			The following example illustrates the 
-			Gelfand-Goresky-MacPherson-Serganova criterion for a 
-			polytope to be a matroid polytope: namely, each edge is of the 
-			form $e_i - e_j$ for some i, j, where $e_i$ are the standard 
-			basis vectors.
+			The Gelfand-Goresky-MacPherson-Serganova 
+			characterizes which polytopes are basis polytopes for a matroid: 
+			namely, each edge is of the form $e_i - e_j$ for some $i, j$, where 
+			$e_i$ are the standard basis vectors.
 			
-		Example
-			M = matroid({{0,1},{0,2},{0,3},{1,2},{2,3}})
-			n = #M.groundSet
-			P = polytope M
-			E = Polyhedra$faces(n - 2, P)/Polyhedra$vertices -- edges of P
-			all(E, e -> sort flatten entries(e_0 - e_1) == ({-1} | toList(n-2:0) | {1})) -- GGMS criterion
+		-- Example
+			-- M = matroid({{0,1},{0,2},{0,3},{1,2},{2,3}})
+			-- n = #M.groundSet
+			-- P = polytope M
+			-- E = Polyhedra$faces(n - 2, P)/Polyhedra$vertices -- edges of P
+			-- all(E, e -> sort flatten entries(e_0 - e_1) == ({-1} | toList(n-2:0) | {1})) -- GGMS criterion
 	SeeAlso
+		bases
 		(independenceComplex, Matroid)
 ///
 
@@ -2677,7 +2689,7 @@ doc ///
 	SeeAlso
 		(independentSets, Matroid)
 		(ideal, Matroid)
-		(polytope, Matroid)
+		(basisIndicatorMatrix, Matroid)
 ///
 
 doc ///
@@ -2942,6 +2954,8 @@ assert(M == uniformMatroid(4,4))
 assert(#bases M == 1)
 R = ZZ/101[x_0..x_3]
 assert(M == matroid monomialIdeal 0_R)
+assert((try matroid ideal 1_R) === null)
+assert((try matroid ideal()) === null)
 N = matroid({a,b,c,d}, {{}})
 assert(rank N == 0 and isWellDefined N and N == dual M)
 M = matroid matrix{{1,0,1,1},{0,1,1,1}}
@@ -3013,11 +3027,11 @@ TEST ///
 G1 = graph({{a,b},{b,c},{c,d},{d,e},{e,f},{f,g},{f,h},{c,h},{c,f},{a,g},{d,g}})
 G2 = graph({{a,b},{b,c},{c,d},{d,e},{e,f},{f,g},{f,h},{c,h},{c,f},{a,g},{a,h}})
 assert(toString tuttePolynomial matroid G1 === toString tuttePolynomial matroid G2)
-M = matroid({{0,1},{0,2},{0,3},{1,2},{2,3}})
-n = #M.groundSet
-P = polytope M
-E = faces(n - 2, P)/vertices -- edges of P (need to update for Polyhedra v1.9)
-assert(all(E, e -> sort flatten entries(e_0 - e_1) == ({-1} | toList(n-2:0) | {1})))
+-- M = matroid({{0,1},{0,2},{0,3},{1,2},{2,3}})
+-- n = #M.groundSet
+-- P = polytope M
+-- E = faces(n - 2, P)/vertices -- edges of P (need to update for Polyhedra v1.9)
+-- assert(all(E, e -> sort flatten entries(e_0 - e_1) == ({-1} | toList(n-2:0) | {1})))
 Delta = independenceComplex M
 assert(ideal Delta == ideal M and values SimplicialComplexes$fVector Delta == {4,5,1})
 ///
@@ -3045,6 +3059,11 @@ assert(all(subsets(P8.groundSet,2)/toList, s -> any(aut, sigma -> sigma_(s#0) ==
 sigma1 = {7,6,5,4,0,1,2,3}
 sigma2 = {1,3,0,2,5,7,4,6}
 assert(member(sigma1, aut) and member(sigma2, aut))
+S8 = matroid(id_((ZZ/2)^4) | matrix{{0_(ZZ/2),1,1,1},{1,0,1,1},{1,1,0,1},{1,1,1,1}})
+F7 = specificMatroids "fano"
+assert(#select(S8_*, x -> areIsomorphic(S8 / {x}, F7)) == 1)
+assert(#select(S8_*, x -> areIsomorphic(S8 \ {x}, dual F7)) == 1)
+assert(#isomorphism(F7, F7) == 168)
 ///
 
 TEST ///
