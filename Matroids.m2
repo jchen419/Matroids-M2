@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => false,
-	Version => "0.9.2",
-	Date => "December 2, 2017",
+	Version => "0.9.3",
+	Date => "December 3, 2017",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -198,10 +198,11 @@ circuits Matroid := List => M -> (
 )
 
 fundamentalCircuit = method()
-fundamentalCircuit (Matroid, List, Thing) := Set => (M, B, e) -> fundamentalCircuit(M, set indicesOf(M, B), (indicesOf(M, {e}))#0)
-fundamentalCircuit (Matroid, Set, ZZ) := Set => (M, B, e) -> (
-	if not member(e, B) then (circuits M)#(position(circuits M, c -> isSubset(c, B + set{e})))
-	else print "Expected element outside the given basis"
+fundamentalCircuit (Matroid, List, Thing) := Set => (M, I, e) -> fundamentalCircuit(M, set indicesOf(M, I), (indicesOf(M, {e}))#0)
+fundamentalCircuit (Matroid, Set, ZZ) := Set => (M, I, e) -> (
+	J := I + set{e};
+	for c in circuits M do if isSubset(c, J) then return c;
+	print("Expected " | toString J | " to be dependent");
 )
 
 loops = method()
@@ -286,7 +287,8 @@ sort (List, Function) := opts -> (L, f) -> (
 latticeOfFlats = method()
 latticeOfFlats Matroid := Poset => M -> poset(flats M/toList, (a, b) -> isSubset(a, b))
 
-fVector Matroid := List => M -> (rankPoset latticeOfFlats M)/(f -> #f)
+--fVector Matroid := List => M -> (rankPoset latticeOfFlats M)/(f -> #f)
+fVector Matroid := HashTable => M -> hashTable pairs tally(flats M/rank_M)
 
 dual Matroid := Matroid => {} >> opts -> M -> (
 	if not M.cache.?dual then (
@@ -410,7 +412,7 @@ representationOf Matroid := Thing => M -> (
 )
 
 -- Finds all permutations inducing a bijection on circuits
--- Since M2 cannot call permutations(10) on a typical machine, this method performs a time/space tradeoff
+-- Note: as permutations(10) is already slow on a typical machine, this method performs a time/space tradeoff
 isomorphism (Matroid, Matroid) := List => (M, N) -> (
 	(C, D, e) := (circuits M, circuits N, #M.groundSet);
 	if #C == 0 then return if #D == 0 then permutations e else {};
@@ -629,14 +631,14 @@ allMatroids ZZ := List => n -> (
 		matroid {{0,1},{0,2},{0,3},{0,4},{1,2},{1,3},{1,4},{2,3},{2,4}},
 		matroid(toList(0..4), {{0,1},{0,2},{0,3},{1,2},{1,3},{2,3}})
 	};
-	{*matroidList := {};
-	startedReading := false;
-	for l in lines get (currentFileDirectory | "Matroids/SmallMatroids.txt") do (
-		if startedReading then (
-			if #l == 0 then break;
-			matroidList = append(matroidList, value l);
-		) else if l == ("-- " | n | " elements") then startedReading = true;
-	);*}
+	-- matroidList := {};
+	-- startedReading := false;
+	-- for l in lines get (currentFileDirectory | "Matroids/SmallMatroids.txt") do (
+		-- if startedReading then (
+			-- if #l == 0 then break;
+			-- matroidList = append(matroidList, value l);
+		-- ) else if l == ("-- " | n | " elements") then startedReading = true;
+	-- );
 	L := toList(0..#matroidList - #select(matroidList, M -> 2*rank M == n) - 1);
 	matroidList | (matroidList_L / dual)_(rsort L)
 )
@@ -1154,7 +1156,7 @@ doc ///
 			in the sublist is lost, when viewed as a set.
 			
 		Example
-			indicesOf(toList(a..z), {{n,o,t},{a},{m,a,t,r,o,i,d}})
+			indicesOf(toList(a..z) | toList(0..9), {{m,a,c,a,u,l,a,y,2},{i,s},{f,u,n}})
 		Text
 		
 			The second case is with a matroid as input. Here the ambient 
@@ -1347,17 +1349,20 @@ doc ///
 			of indices, or a @TO2{List, "list"}@ of elements in M, 
 			which is an independent set
 		e:ZZ
-			an index, or an element in M
+			an index, or an element in M, such that 
+			$I \cup&nbsp;\{e\}$ is dependent
 	Outputs
 		:Set
-			the fundamental circuit of I with respect to e
+			the fundamental circuit of e with respect to I
 	Description
 		Text
-			The fundamental circuit of an independent set I with 
-			respect to an element e not in I is the unique circuit 
-			contained in $I \cup&nbsp;\{e\}$. Every circuit is the
-			fundamental circuit of some element with respect to 
-			some basis.
+			If I is an independent set I, and e is an element such
+			that $I \cup&nbsp;\{e\}$ is dependent (in particular
+			e is not in I), then there is a unique circuit contained in 
+			$I \cup&nbsp;\{e\}$, called the fundamental circuit of e 
+			with respect to I, which moreover contains e.
+			Every circuit is the fundamental circuit of some element 
+			with respect to some basis.
 			
 		Example
 			M = matroid({a,b,c,d},{{a,b},{a,c}})
@@ -1366,12 +1371,14 @@ doc ///
 			fundamentalCircuit(M, set{0,2}, 1)
 			fundamentalCircuit(M, set{0,2}, 3)
 		Text
-		
-			If the element e is in I, then a warning is printed, and 
-			@TO null@ is returned. Note that in the final example below, 
-			elements 2 and 3 are parallel (indeed, both are equal to the 
-			column vector (1, 1)). This shows that in general it is safer 
-			to refer to a subset by its indices, rather than its elements.
+			
+			This method does not perform any checks (e.g. 
+			whether $I$ is independent, or if $e$ is not in $I$). 
+			If $I \cup&nbsp;\{e\}$ is independent, then a warning is
+			printed, and @TO null@ is returned. In the example below, 
+			the elements with indices 2 and 3 are parallel (indeed, both 
+			are equal to the column vector (1, 1)). Thus in general it is 
+			safer to refer to a subset by its indices, rather than its elements.
 			
 		Example
 			M = matroid matrix{{1,0,1,1},{0,1,1,1}}
@@ -1380,13 +1387,10 @@ doc ///
 			M_2 == M_3
 			fundamentalCircuit (M, M_{1,2}, M_3)
 			fundamentalCircuit (M, set{1,2}, 3)
-	Caveat
-		No attempt is made to check that the set I is independent. If I is
-		dependent, then this function will simply return the first circuit
-		contained in I.
 	SeeAlso
 		circuits
 		(independentSets, Matroid)
+		isDependent
 ///
 
 doc ///
@@ -1660,6 +1664,7 @@ doc ///
 
 doc ///
 	Key
+		hyperplanes
 		(hyperplanes, Matroid)
 	Headline
 		hyperplanes of a matroid
@@ -1681,10 +1686,6 @@ doc ///
 		Example
 			M = matroid({a,b,c,d},{{a,b},{a,c}})
 			hyperplanes M
-	-- Caveat
-		-- This method is not to be confused with the method @TO hyperplanes@
-		-- in the @TO Polyhedra@ package, which refers to the affine hyperplanes
-		-- defining a polyhedron.
 	SeeAlso
 		flats
 		(rank, Matroid)
@@ -1740,7 +1741,7 @@ doc ///
 	Inputs
 		M:Matroid
 	Outputs
-		:List
+		:HashTable
 	Description
 		Text
 			The f-vector of a matroid M is the invariant (f_0, f_1, ..., f_r), 
@@ -1753,14 +1754,16 @@ doc ///
 		Example
 			M = matroid({a,b,c,d},{{a,b},{a,c}})
 			fVector M
+			fVector matroid completeGraph 4
+	Caveat
+		This is not the same as the f-vector of the 
+		@TO2{(independenceComplex, Matroid), "independence complex"}@
+		of the matroid M, which counts the number of independent sets of 
+		a given size. To do this instead, use "fVector independenceComplex M".
 	SeeAlso
 		flats
 		(rank, Matroid)
 		latticeOfFlats
-	Caveat
-		This is not the same as the f-vector of the 
-		@TO2{(independenceComplex, Matroid), "independence complex"}@
-		of the matroid M.
 ///
 
 doc ///
@@ -2311,24 +2314,30 @@ doc ///
 		N:Matroid
 	Outputs
 		:String
-			either "True" or "False" or "Could be isomorphic"
+			either "true" or "false" or "Could be isomorphic"
 	Description
 		Text
 			This method performs relatively quick tests to determine 
-			whether or not two matroids are isomorphic. A result of "False"
+			whether or not two matroids are isomorphic. A result of "false"
 			is definitive proof that the matroids are not isomorphic, a result
-			of "True" is definitive proof that the matroids are isomorphic,
+			of "true" is definitive proof that the matroids are isomorphic,
 			and a result of "Could be isomorphic" is strong evidence that 
 			the matroids may be isomorphic.
 			
+			If "true" or "false" is returned, use @TO value@ to convert to a
+			@TO Boolean@.
+			
 		Example
-			quickIsomorphismTest(matroid(toList(a..z),{{m,a,t,r,o,i,d}}), matroid(toList(1..26), {{random(ZZ),23,15,12,19,20,11}}))
+			M1 = matroid(toList(a..z)/toString,{{"m","a","t","r","o","i","d"}})
+			M2 = matroid(toList(0..25), {{random(ZZ),23,15,12,19,20,11}})
+			quickIsomorphismTest(M1, M2)
 			quickIsomorphismTest(matroid random(ZZ^5,ZZ^8), uniformMatroid(5, 8))
 			quickIsomorphismTest(uniformMatroid(5, 9), uniformMatroid(4, 9))
 			M1 = matroid graph({{a,b},{b,c},{c,d},{d,e},{e,f},{f,g},{f,h},{c,h},{c,f},{a,g},{d,g}})
 			M2 = matroid graph({{a,b},{b,c},{c,d},{d,e},{e,f},{f,g},{f,h},{c,h},{c,f},{a,g},{a,h}})
 			R = ZZ[x,y]; tuttePolynomial(M1, R) == tuttePolynomial(M2, R)
 			time quickIsomorphismTest(M1, M2)
+			value oo === false
 	SeeAlso
 		(isomorphism, Matroid, Matroid)
 		(areIsomorphic, Matroid, Matroid)
@@ -2626,9 +2635,6 @@ doc ///
 			The matroid (basis) polytope of a matroid on n elements lives in 
 			R^n, and is the convex hull of the indicator vectors of the bases.
 			
-			The matroid polytope is contained in the independence complex
-			of the matroid.
-			
 			For uniform matroids, the basis polytope is precisely the hypersimplex:
 		
 		Example
@@ -2636,7 +2642,7 @@ doc ///
 			A = basisIndicatorMatrix U24
 		Text
 		
-			In order to obtain an actual polytope, one needs to take the convex
+			In order to obtain an actual polytope, one must take the convex
 			hull of the columns of the indicator matrix, which is provided by the
 			Polyhedra package:
 			
@@ -2680,8 +2686,6 @@ doc ///
 			to the circuit ideal of the matroid (which is a squarefree 
 			monomial ideal). This method uses the @TO SimplicialComplexes@
 			package to return an object of type @TO SimplicialComplex@.
-			
-			The independence complex contains the matroid basis polytope.
 			
 		Example
 			M = matroid({{0,1},{0,2},{0,3},{1,2},{2,3}})
@@ -2771,8 +2775,7 @@ doc ///
 			M = matroid completeGraph 4
 			I = idealChowRing M
 			(0..<rank M)/(i -> hilbertFunction(i, I))
-			R = ring I
-			apply(gens R, v -> last baseName v)
+			apply(gens ring I, v -> last baseName v)
 	SeeAlso
 		latticeOfFlats
 		cogeneratorChowRing
@@ -2906,7 +2909,7 @@ doc ///
 		Example
 			L = allMatroids 5; #L
 			all(L, M -> isWellDefined M)
-			all(subsets(L, 2), S -> quickIsomorphismTest(S#0, S#1) == "False")
+			all(subsets(L, 2), S -> quickIsomorphismTest(S#0, S#1) == "false")
 			L/ideal/res/betti
 			smallMatroids = flatten apply(6, i -> allMatroids i); -- all matroids on < 6 elements
 			#smallMatroids
@@ -2952,6 +2955,7 @@ assert(ideal M == 0)
 assert(M == matroid({a,b,c,d}, {}, EntryMode => "circuits"))
 assert(M == uniformMatroid(4,4))
 assert(#bases M == 1)
+assert(fundamentalCircuit(M, set{1,2}, 3) === null)
 R = ZZ/101[x_0..x_3]
 assert(M == matroid monomialIdeal 0_R)
 assert((try matroid ideal 1_R) === null)
@@ -2962,6 +2966,7 @@ M = matroid matrix{{1,0,1,1},{0,1,1,1}}
 assert(M \ set{0} == M \ set{1} and not M \ set{0} == M \ set{2})
 assert(fundamentalCircuit (M, (bases M)#2, 3) === set{2, 3})
 assert(fundamentalCircuit (M, M_{0,1}, M_3) === set{0,1,3})
+assert(fundamentalCircuit (M, M_{1,2}, M_3) === null)
 assert(toString tuttePolynomial M == "x^2+x*y+y^2+x+y")
 ///
 
@@ -3024,16 +3029,16 @@ assert(maxWeightBasis(F7, rsort w) === set{0,1,3})
 ///
 
 TEST ///
-G1 = graph({{a,b},{b,c},{c,d},{d,e},{e,f},{f,g},{f,h},{c,h},{c,f},{a,g},{d,g}})
-G2 = graph({{a,b},{b,c},{c,d},{d,e},{e,f},{f,g},{f,h},{c,h},{c,f},{a,g},{a,h}})
-assert(toString tuttePolynomial matroid G1 === toString tuttePolynomial matroid G2)
--- M = matroid({{0,1},{0,2},{0,3},{1,2},{2,3}})
--- n = #M.groundSet
--- P = polytope M
--- E = faces(n - 2, P)/vertices -- edges of P (need to update for Polyhedra v1.9)
--- assert(all(E, e -> sort flatten entries(e_0 - e_1) == ({-1} | toList(n-2:0) | {1})))
-Delta = independenceComplex M
-assert(ideal Delta == ideal M and values SimplicialComplexes$fVector Delta == {4,5,1})
+M1 = matroid graph({{a,b},{b,c},{c,d},{d,e},{e,f},{f,g},{f,h},{c,h},{c,f},{a,g},{d,g}})
+M2 = matroid graph({{a,b},{b,c},{c,d},{d,e},{e,f},{f,g},{f,h},{c,h},{c,f},{a,g},{a,h}})
+T = ZZ[x,y]
+assert(isWellDefined M1 and isWellDefined M2)
+assert(tuttePolynomial(M1, T) === tuttePolynomial(M2, T))
+Delta = independenceComplex M1
+F = fVector Delta
+assert(ideal Delta == ideal M1 and F === fVector independenceComplex M2)
+assert((sort keys F)/(k -> F#k) === {1,11,55,164,319,409,324,125})
+assert(not areIsomorphic(M1, M2))
 ///
 
 TEST ///
