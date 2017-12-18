@@ -2911,6 +2911,7 @@ doc ///
 			all(L, M -> isWellDefined M)
 			all(subsets(L, 2), S -> quickIsomorphismTest(S#0, S#1) == "false")
 			L/ideal/res/betti
+			tally(L/fVector/values)
 			smallMatroids = flatten apply(6, i -> allMatroids i); -- all matroids on < 6 elements
 			#smallMatroids
 ///
@@ -2936,7 +2937,7 @@ assert(rank_M {a,d} === 1)
 assert(closure_M {c,d} === {1, 2, 3})
 assert(set hyperplanes M === set {set {0, 3}, set {1, 2, 3}})
 assert(set flats M === set {set {3}, set {0, 3}, set {1, 2, 3}, set {0, 1, 2, 3}})
-assert(fVector M === {1, 2, 1})
+assert(values fVector M === {1, 2, 1})
 D = dual M
 assert(D == dual M)
 N1 = M \ {d}
