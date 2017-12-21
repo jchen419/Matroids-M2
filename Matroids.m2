@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => false,
-	Version => "0.9.3",
-	Date => "December 3, 2017",
+	Version => "0.9.4",
+	Date => "December 21, 2017",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -329,7 +329,7 @@ Matroid / List := (M, S) -> contraction(M, S)
 minor = method()
 minor (Matroid, List, List) := Matroid => (M, X, Y) -> minor(M, set indicesOf(M, X), set indicesOf(M, Y))
 minor (Matroid, Set, Set) := Matroid => (M, X, Y) -> (
-	if #(X*Y) > 0 then print "Warning: expected disjoint sets. Shifting common indices in Y up ...";
+	if #(X*Y) > 0 then error "Expected disjoint sets";
 	(M / X) \ set((toList Y)/(y -> y - #select(toList X, x -> x < y)))
 )
 
@@ -857,7 +857,7 @@ doc ///
 		indices (with respect to the ground set) are stored instead. For more,
 		see @TO groundSet@.
 	SeeAlso
-		isWellDefined
+		(isWellDefined, Matroid)
 		bases
 		indicesOf
 		specificMatroids
@@ -1651,10 +1651,22 @@ doc ///
 			been precomputed, then this function is typically much 
 			faster.
 			
-		Example
-			M = matroid completeGraph 7
-			time #hyperplanes M
-			time #flats M
+		CannedExample
+			i4 : M = matroid completeGraph 7
+
+			o4 = a matroid of rank 6 on 21 elements
+			
+			o4 : Matroid
+			
+			i5 : time #hyperplanes M
+			     ‐‐ used 6.47885 seconds
+			
+			o5 = 63
+			
+			i6 : time #flats M
+			     ‐‐ used 0.939786 seconds
+			
+			o6 = 877
 	SeeAlso
 		closure
 		(hyperplanes, Matroid)
@@ -1801,6 +1813,8 @@ doc ///
 			D = dual M
 			peek D
 			M == dual D
+			loops D == coloops M
+			hyperplanes M === apply(circuits D, C -> D.groundSet - C)
 		Text
 			
 			A matroid that is 
@@ -1935,7 +1949,7 @@ doc ///
 		X:Set
 			of indices, or a @TO2{List, "list"}@ of elements in M
 		Y:Set
-			of indices, or a @TO2{List, "list"}@ of elements in M
+			of indices, or a @TO2{List, "list"}@ of elements in M, disjoint from X
 	Outputs
 		:Matroid
 			the minor M / X &#92; Y
@@ -1970,9 +1984,8 @@ doc ///
 			(or (M &#92; Y) / X0). Thus this method serves purely as a 
 			convenience, to save the user the (trivial) task of computing Y0 from Y.
 			
-			If X and Y are not disjoint, then a warning is printed, and any 
-			index a in Y that is also in X is instead viewed as a+1 in Y. This is
-			done so that the two input styles above agree as much as possible.
+			If X and Y are not disjoint, then an error is thrown (thus one should
+			@TO2{(symbol -, Set, Set), "subtract"}@ X from Y beforehand).
 			
 		Example
 			M5 = matroid completeGraph 5
@@ -1981,8 +1994,8 @@ doc ///
 			areIsomorphic(N, matroid completeGraph 4)
 			N == (M5 \ set{3,4,9}) / set{6} -- after deleting 3,4 (and 9), index 8 -> 6
 			N == M5 / set{8} \ set{3,4,8} -- after contracting 8, index 9 -> 8
-			N1 = minor(M5, set{8}, set{3,4,8})
-			N == N1
+			(try minor(M5, set{8}, set{3,4,8,9})) === null
+			minor(M5, set{8}, set{3,4,8,9} - set{8})
 	SeeAlso
 		deletion
 		contraction
@@ -2175,15 +2188,16 @@ doc ///
 			the union of bases of M and N.
 			
 		Example
-			M = uniformMatroid(2,3) ++ uniformMatroid(1,3)
-			peek M
-			M_*
-			(M ++ uniformMatroid(1, 3))_*
+			S = uniformMatroid(2,3) ++ uniformMatroid(1,3)
+			peek S
+			S_*
+			(S ++ uniformMatroid(1, 3))_*
 	Caveat
-		The elements of the ground set of the direct sum will receive a 
-		placeholder index to ensure disjointness. As this method is 
+		The elements of the ground set of the direct sum will receive
+		placeholders to ensure disjointness (as evidenced by the 
+		elements of S being ordered pairs above). As this method is 
 		binary, repeated applications of this function will result in nested 
-		placeholder indices. Since the bases are stored as indices, the 
+		placeholders. Since the bases are stored as indices, the 
 		bases of M will not change, but those of N will be shifted up by 
 		the size of the ground set of M.
 	SeeAlso
@@ -2214,12 +2228,14 @@ doc ///
 			M = matroid graph({{0,1},{0,2},{1,2},{3,4},{4,5}})
 			C = components M
 			areIsomorphic(M, fold(C, (a, b) -> a ++ b))
-			components matroid graph({{0,1},{0,2},{0,3},{0,4},{1,2},{3,4}})
+			G = graph({{0,1},{0,2},{0,3},{0,4},{1,2},{3,4}})
+			isConnected G
+			components matroid G
 	Caveat
 		As the examples above show, the connected components of 
 		the graphic matroid M(G) need not be the same as the connected 
 		components of the graph G (indeed, for any graph G, there exists 
-		a connected graph H such that M(G) and M(H) are isomorphic).
+		a connected graph H with M(G) isomorphic to M(H)).
 	SeeAlso
 		circuits
 		(symbol ++, Matroid, Matroid)
