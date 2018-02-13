@@ -1,13 +1,7 @@
 newPackage("Matroids",
-<<<<<<< HEAD
 	AuxiliaryFiles => true,
 	Version => "0.9.5",
 	Date => "February 10, 2018",
-=======
-	AuxiliaryFiles => false,
-	Version => "0.9.4",
-	Date => "December 21, 2017",
->>>>>>> a46f42e367a08237d49d1f5c490624aa8d7f70eb
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -341,12 +335,8 @@ minor = method()
 minor (Matroid, List, List) := Matroid => (M, X, Y) -> minor(M, set indicesOf(M, X), set indicesOf(M, Y))
 minor (Matroid, Set, Set) := Matroid => (M, X, Y) -> (
 	if #(X*Y) > 0 then error "Expected disjoint sets";
-<<<<<<< HEAD
 	N := M / X;
 	N \ set((toList Y)/(y -> position(N_*, e -> M_y === e)))
-=======
-	(M / X) \ set((toList Y)/(y -> y - #select(toList X, x -> x < y)))
->>>>>>> a46f42e367a08237d49d1f5c490624aa8d7f70eb
 )
 
 hasMinor = method()
