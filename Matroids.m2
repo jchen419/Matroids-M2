@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "0.9.5",
-	Date => "February 10, 2018",
+	Version => "0.9.6",
+	Date => "February 14, 2018",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -3048,7 +3048,7 @@ doc ///
 	Description
 		Text
 			This method returns a list of matroids on n elements, for small n 
-			(currently, n <= 5). This list is complete for isomorphism types
+			(currently, n <= 8). This list is complete for isomorphism types
 			of matroids on n elements, i.e. every matroid on n elements is
 			@TO2{(areIsomorphic, Matroid, Matroid), "isomorphic"}@ to a 
 			unique matroid in this list.
