@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
 	Version => "0.9.6",
-	Date => "February 14, 2018",
+	Date => "February 15, 2018",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -608,7 +608,7 @@ allMatroids ZZ := List => n -> (
 	if n == 1 then return {uniformMatroid(0, 1), uniformMatroid(1, 1)};
 	startedReading := false;
 	E := toList(0..<n); r := 0;
-	matroidList := for l in lines get (currentFileDirectory | "Matroids/SmallMatroids.txt") list (
+	matroidList := for l in lines get(first select(apply(path, p -> p | "Matroids/SmallMatroids.txt"), p -> fileExists p)) list (
 		if startedReading then (
 			if #l == 0 then break
 			else if #l > binomial(n, r) then ( r = r + 1; PE := reverse sort subsets(set E, r); );
@@ -3161,7 +3161,7 @@ assert(S == C#0 ++ C#1)
 M = matroid(graph({{0,1},{1,2},{0,2},{3,4},{4,5},{3,5}}), Loops => {0,3,5})
 assert(#loops M == 3 and #connectedComponents representationOf M == 2)
 C = components M
-assert(#C == 5 and #isomorphism(M, fold(C, (a, b) -> a ++ b)) == 24)
+assert(#C == 5 and #isomorphism(M, fold(C, (a, b) -> a ++ b)) == 432)
 assert(characteristicPolynomial M == 0)
 M1 = matroid({a,b,c,d}, {{a},{b},{c}})
 M2 = matroid({a,b,c,d}, {{b},{c},{d}})
@@ -3210,8 +3210,8 @@ assert(PG22 == F7 and areIsomorphic(PG22, simpleMatroid matroid A))
 M4 = matroid completeGraph 4
 assert(all(F7_*, x -> areIsomorphic(M4, F7 \ {x})))
 w = {0, log(2), 4/3, 1, -4, 2, pi_RR}
-assert(maxWeightBasis(F7, w) === set{3,5,6})
-assert(maxWeightBasis(F7, rsort w) === set{0,1,3})
+assert(maxWeightBasis(F7, w) === set{2,5,6})
+assert(maxWeightBasis(F7, rsort w) === set{0,1,2})
 ///
 
 TEST ///
