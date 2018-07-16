@@ -9,7 +9,7 @@ A [matroid](https://en.wikipedia.org/wiki/Matroid) is a combinatorial structure 
 and more!
 
 ## Installation
-To manually install the latest version: 
+This package is distributed with Macaulay2, since version 1.11. To manually install the latest version: 
 
 - Download the [source code](https://raw.githubusercontent.com/jchen419/Matroids-M2/master/Matroids.m2) (right-click, save link as -> "Matroids.m2")
 - Open a Terminal window, and `cd` to the download location if necessary

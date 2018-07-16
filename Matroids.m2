@@ -308,13 +308,14 @@ dual Matroid := Matroid => {} >> opts -> M -> (
 restriction = method()
 restriction (Matroid, List) := Matroid => (M, S) -> restriction(M, set indicesOf(M, S))
 restriction (Matroid, Set) := Matroid => (M, S) -> ( -- assumes S is a subset of M.groundSet (not M_*)
+	S0 := sort keys S;
 	if #bases M > 100 then (
 		I := ideal M; R := ring I;
-		return matroid(M_S, monomialIdeal (map((coefficientRing R)[(gens R)_(keys S)], R))(I));
+		return matroid(M_S0, monomialIdeal (map((coefficientRing R)[(gens R)_(S0)], R))(I));
 	);
 	B := bases M/(b -> S*b);
 	r := max(B/(b -> #b));
-	matroid(M_S, indicesOf(toList S, unique select(B, b -> #b == r) /toList))
+	matroid(M_S0, indicesOf(S0, unique select(B, b -> #b == r) /toList))
 )
 Matroid | Set := (M, S) -> restriction(M, S)
 Matroid | List := (M, S) -> restriction(M, S)
@@ -421,7 +422,8 @@ representationOf Matroid := Thing => M -> (
 -- Note: as permutations(10) is already slow on a typical machine, this method performs a time/space tradeoff
 isomorphism (Matroid, Matroid) := List => (M, N) -> (
 	(C, D, e) := (sort(circuits M, c -> #c), circuits N, #M.groundSet);
-	if #C == 0 then return if #D == 0 then permutations e else {};
+	if not tally(C/(c -> #c)) === tally(D/(d -> #d)) then return {};
+	if #C == 0 then return permutations e;
 	possibles := {};
 	if e > 5 then (
 		c0 := toList C#0;
@@ -613,9 +615,9 @@ allMatroids ZZ := List => n -> (
 			if #l == 0 then break
 			else if #l > binomial(n, r) then ( r = r + 1; PE := reverse sort subsets(set E, r); );
 			matroid(E, PE_(positions(characters l, c -> c === "*")))
-		) else if l == ("-- " | n | " elements") then startedReading = true
+		) else if l == ("-- " | n | " elements") then (startedReading = true;)
 	);
-	matroidList = {uniformMatroid(0, n)} | drop(delete(null, matroidList), 1);
+	matroidList = {uniformMatroid(0, n)} | delete(null, matroidList);
 	L := toList(0..#matroidList - #select(matroidList, M -> 2*rank M == n) - 1);
 	matroidList | (matroidList_L / dual)_(rsort L)
 )
@@ -3229,6 +3231,32 @@ F = fVector Delta
 assert(ideal Delta == ideal M1 and F === fVector independenceComplex M2)
 assert((sort keys F)/(k -> F#k) === {1,11,55,164,319,409,324,125})
 assert(not areIsomorphic(M1, M2))
+///
+
+TEST ///
+R = QQ[x_0..x_6]
+M1 = matroid ideal(x_0*x_1*x_2*x_3,x_0*x_1*x_4*x_5,x_2*x_3*x_4*x_5,x_0*x_1*x_4*x_6,x_2*x_3*x_4*x_6,x_5*x_6)
+M2 = matroid ideal(x_0*x_1*x_2*x_3,x_0*x_1*x_2*x_4,x_0*x_1*x_3*x_4,x_0*x_2*x_3*x_4,x_1*x_2*x_3*x_4,x_5*x_6)
+U24 = uniformMatroid(2, 4)
+F7 = specificMatroids "fano"
+assert(any({U24, F7, dual F7}, m -> hasMinor(M1, m)) == false)
+assert(betti res ideal M1 === betti res ideal M2)
+assert(areIsomorphic(M1, M2) == false)
+M3 = matroid ideal (x_0*x_1*x_2,x_0*x_3*x_4,x_1*x_2*x_3*x_4,x_0*x_1*x_3*x_5,x_0*x_2*x_3*x_5,x_1*x_2*x_3*x_5,x_0*x_1*x_4*x_5,x_0*x_2*x_4*x_5,x_1*x_2*x_4*x_5,x_1*x_3*x_4*x_5,x_2*x_3*x_4*x_5,x_0*x_1*x_3*x_6,x_0*x_2*x_3*x_6,x_1*x_2*x_3*x_6,x_0*x_1*x_4*x_6,x_0*x_2*x_4*x_6,x_1*x_2*x_4*x_6,x_1*x_3*x_4*x_6,x_2*x_3*x_4*x_6,x_1*x_5*x_6,x_0*x_2*x_5*x_6,x_0*x_3*x_5*x_6,x_2*x_3*x_5*x_6,x_0*x_4*x_5*x_6,x_2*x_4*x_5*x_6,x_3*x_4*x_5*x_6)
+M4 = matroid ideal (x_0*x_1*x_2,x_0*x_3*x_4,x_1*x_2*x_3*x_4,x_0*x_1*x_3*x_5,x_0*x_2*x_3*x_5,x_1*x_2*x_3*x_5,x_0*x_1*x_4*x_5,x_0*x_2*x_4*x_5,x_1*x_2*x_4*x_5,x_1*x_3*x_4*x_5,x_2*x_3*x_4*x_5,x_0*x_1*x_3*x_6,x_0*x_2*x_3*x_6,x_1*x_2*x_3*x_6,x_0*x_1*x_4*x_6,x_0*x_2*x_4*x_6,x_1*x_2*x_4*x_6,x_1*x_3*x_4*x_6,x_2*x_3*x_4*x_6,x_0*x_5*x_6,x_1*x_2*x_5*x_6,x_1*x_3*x_5*x_6,x_2*x_3*x_5*x_6,x_1*x_4*x_5*x_6,x_2*x_4*x_5*x_6,x_3*x_4*x_5*x_6)
+assert(betti res ideal M3 === betti res ideal M4 and betti res dual ideal M3 === betti res dual ideal M4)
+assert(betti res ideal dual M3 === betti res ideal dual M4 and betti res dual ideal dual M3 === betti res dual ideal dual M4)
+assert(areIsomorphic(M3, M4) == false)
+///
+
+TEST ///
+G0 = graph(toList(0..5), {{0, 3}, {4, 0}, {0, 5}, {4, 1}, {5, 1}, {5, 2}, {4, 3}, {5, 3}, {4, 5}})
+G1 = graph(toList(0..5), {{0, 3}, {4, 0}, {0, 5}, {1, 3}, {4, 1}, {5, 2}, {4, 3}, {5, 3}, {4, 5}})
+G2 = graph(toList(0..5), {{0, 2}, {4, 0}, {0, 5}, {1, 3}, {4, 1}, {5, 1}, {4, 2}, {5, 2}, {4, 5}})
+(M0, M1, M2) = (G0, G1, G2)/matroid
+assert((#isomorphism(M0,M1), #isomorphism(M1,M0)) == (8,8))
+T = ZZ[x,y]
+assert(tuttePolynomial(M0, T) == tuttePolynomial(M1, T) and tuttePolynomial(M1, T) == tuttePolynomial(M2, T))
 ///
 
 TEST ///
