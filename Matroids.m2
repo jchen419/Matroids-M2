@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "0.9.8",
-	Date => "September 28, 2018",
+	Version => "1.0.1",
+	Date => "July 27, 2019",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -290,7 +290,7 @@ flats Matroid := List => M -> (
 latticeOfFlats = method()
 latticeOfFlats Matroid := Poset => M -> poset(flats M/toList, (a, b) -> isSubset(a, b))
 
-fVector Matroid := HashTable => M -> hashTable pairs tally(flats M/rank_M)
+fVector Matroid := HashTable => opts -> M -> hashTable pairs tally(flats M/rank_M)
 
 dual Matroid := Matroid => {} >> opts -> M -> (
 	if not M.cache.?dual then (
@@ -590,7 +590,7 @@ maxWeightBasis (Matroid, List) := Set => (M, w) -> (
 idealChowRing = method()
 idealChowRing Matroid := Ideal => M -> (
 	x := symbol x; -- use symbol rather than getSymbol, in order to work with indices internally
-	F := delete({}, delete(M.groundSet, flats M)/toList);
+	F := delete({}, delete(M.groundSet, flats M)/toList/sort);
 	R := QQ[F/(f -> x_f)];
 	I2 := ideal(select(subsets(F, 2), s -> #unique(s#0 | s#1) > max(#(s#0), #(s#1)))/(p -> x_(p#0)*x_(p#1)));
 	L0 := sum(select(F, f -> member(0, f))/(f -> x_f));
@@ -3036,7 +3036,8 @@ doc ///
 			This method returns the defining ideal of the Chow ring, 
 			which lives in a polynomial ring with variable indices equal to 
 			the flats of M. To work with these subscripts, use 
-			"last baseName v" to get the index of a variable v, as shown below:
+			"last baseName v" to get the index of a variable v. For more 
+			information, cf. @TO "Working with Chow rings of matroids"@.
 			
 		Example
 			M = matroid completeGraph 4
@@ -3048,6 +3049,7 @@ doc ///
 	SeeAlso
 		latticeOfFlats
 		cogeneratorChowRing
+		"Working with Chow rings of matroids"
 ///
 
 doc ///
@@ -3085,6 +3087,66 @@ doc ///
 			diff(gens((map(T, ring I, gens T)) I), F)
 	SeeAlso
 		latticeOfFlats
+		idealChowRing
+///
+
+doc ///
+	Key
+		"Working with Chow rings of matroids"
+	Description
+		Text
+			This documentation page contains various tips for 
+			effectively working with Chow rings of matroids within
+			this package. We take the graphic matroid of the 
+			complete graph on 4 vertices as the running example:
+			
+		Example
+			M = matroid completeGraph 4
+			I = idealChowRing M;
+		Text
+		
+			As seen from above, the output of @TO idealChowRing@
+			is an @TO Ideal@, rather than a @TO Ring@. One can
+			get the ambient polynomial ring, as well as the associated
+			quotient ring:
+			
+		Example
+			R = ring I
+			S = R/I
+		Text
+		
+			Next, one often wants to access and perform computations
+			with elements in the quotient ring. The variables in the 
+			ambient ring of the ideal of the Chow ring are indexed by 
+			flats of the matroid, which retains useful information but 
+			makes the variables themselves difficult to access. However,
+			as with any ring in Macaulay2, one can always access variables
+			using subscripts:
+			-- using @TO2{(symbol _, Ring, ZZ), "subscripts"}@:
+			
+		Example
+			R_0
+			S_1
+			S_5*S_6
+		Text
+			
+			Notice that elements of $S$ are already rewritten in the 
+			normal form modulo the ideal of the Chow ring. 
+			
+			One can access the flat corresponding to a given variable as follows:
+			
+		Example
+			R_7
+			last baseName R_7
+		Text
+		
+			It is also possible to access variables via their flats by creating an 
+			auxiliary @TO HashTable@:
+			
+		Example
+			chowVars = hashTable apply(#gens R, i -> last baseName R_i => S_i)
+			chowVars#{5} * chowVars#{0,5}
+	SeeAlso
 		idealChowRing
 ///
 
