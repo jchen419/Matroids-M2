@@ -481,12 +481,13 @@ isomorphism (Matroid, Matroid) := HashTable => (M, N) -> ( -- assumes (M, N) sat
 
 quickIsomorphismTest = method()
 quickIsomorphismTest (Matroid, Matroid) := String => (M, N) -> (
-	(r, b, c, e) := (rank M, #bases M, #circuits M, #M.groundSet);
-	if not (r == rank N and b == #bases N and c == #circuits N and e == #N.groundSet) then return "false";
+	(r, b, e) := (rank M, #bases M, #M.groundSet);
+	if not (r == rank N and b == #bases N and e == #N.groundSet) then return "false";
 	if M == N then ( if debugLevel > 0 then print "Matroids are equal"; return "true" );
-	if min(b, c, binomial(e, r) - b) <= 1 then ( if debugLevel > 0 then print "At most 1 basis/nonbasis/circuit"; return "true" );
-	idealList := (M,N)/(m -> (m, dual m)/ideal);
-	if idealList#0/res/betti === idealList#1/res/betti then "Could be isomorphic" else "false"
+	if not(betti ideal M === betti ideal N) then return "false";
+	if min(b, binomial(e, r) - b) <= 1 then ( if debugLevel > 0 then print "At most 1 basis/nonbasis"; return "true" );
+	try ( alarm 1; if not betti res dual ideal M === betti res dual ideal N then return "false" );
+	"Could be isomorphic"
 )
 
 areIsomorphic (Matroid, Matroid) := Boolean => (M, N) -> (
@@ -3437,6 +3438,15 @@ M4 = matroid ideal (x_0*x_1*x_2,x_0*x_3*x_4,x_1*x_2*x_3*x_4,x_0*x_1*x_3*x_5,x_0*
 assert(betti res ideal M3 === betti res ideal M4 and betti res dual ideal M3 === betti res dual ideal M4)
 assert(betti res ideal dual M3 === betti res ideal dual M4 and betti res dual ideal dual M3 === betti res dual ideal dual M4)
 assert(areIsomorphic(M3, M4) == false)
+///
+
+TEST ///
+L8 = allMatroids 8;
+(M, N) = (L8#615, L8#616)
+assert(areIsomorphic(M, dual M))
+assert(not areIsomorphic(N, dual N))
+assert(betti res ideal N === betti res ideal dual N)
+assert(betti res dual ideal N === betti res dual ideal dual N)
 ///
 
 TEST ///
