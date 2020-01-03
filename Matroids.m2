@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.0.1",
-	Date => "July 27, 2019",
+	Version => "1.2.0",
+	Date => "January 3, 2020",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -48,6 +48,8 @@ export {
 	"contraction",
 	"minor",
 	"hasMinor",
+	"is3Connected",
+	"hasSeparator",
 	"relaxation",
 	"representationOf",
 	"quickIsomorphismTest",
@@ -398,6 +400,33 @@ getComponentsRecursive (List, List) := List => (S, C) -> (
 components Matroid := List => M -> (
 	singles := join(loops M, coloops M);
 	join(subsets(singles, 1), getComponentsRecursive(toList(M.groundSet - singles), circuits M))/set/restriction_M
+)
+
+isConnected Matroid := Boolean => M -> (
+     I := ideal M;
+     all(subsets(gens ring I, 2)/product, p -> any(I_*, g -> g % p == 0) )
+)
+
+is3Connected = method()
+is3Connected Matroid := Boolean => M -> isConnected M and not hasSeparator(M, 2)
+
+hasSeparator = method()
+hasSeparator (Matroid, ZZ) := Boolean => (M, k) -> (
+     if k == 1 then return not isConnected M;
+     if debugLevel > 0 then print "Checking existence of minimal k-separator...";
+     indepCocircs := select(circuits dual M, c -> #c == k and not isDependent(M, c));
+     coindepCircs := select(circuits M, c -> #c == k and not isDependent(dual M, c));
+     if any(indepCocircs | coindepCircs, X -> rank(M, X) + rank(dual M, X) - k <= k-1) then return true;
+     if debugLevel > 0 then print "Computing ranks of flats for M and M*...";
+     (fv1, fv2) := (M, dual M)/fVector;
+     if debugLevel > 0 then print "Checking existence of nonminimal k-separator...";
+     flatsCoflats := toList(set flats M * set flats dual M);
+     sepCands := select(flatsCoflats, X -> #X > k and #X < #M_* - k);
+     for X in sepCands do if rank(M, X) + rank(dual M, X) - #X <= k-1 then ( 
+          print("Found separator: " | toString toList X); 
+          return true 
+     );
+     false
 )
 
 relaxation = method()
@@ -3365,6 +3394,13 @@ assert(M0 + M1 == uniformMatroid(2,4))
 F7 = specificMatroid "fano"
 NF = specificMatroid "nonfano"
 assert(all({F7 + NF, F7 + F7, NF + NF}, M -> M == uniformMatroid(6, 7)))
+///
+
+TEST ///
+G = graph({{0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,0},{0,2},{0,3},{0,4},{1,3},{3,5},{3,6}})
+M = matroid G
+assert(isConnected M)
+assert(not is3Connected M)
 ///
 
 TEST ///
