@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.2.0",
-	Date => "January 3, 2020",
+	Version => "1.2.1",
+	Date => "January 5, 2020",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -48,8 +48,9 @@ export {
 	"contraction",
 	"minor",
 	"hasMinor",
+	"isBinary",
 	"is3Connected",
-	"hasSeparator",
+	"getSeparation",
 	"relaxation",
 	"representationOf",
 	"quickIsomorphismTest",
@@ -369,6 +370,13 @@ hasMinor (Matroid, Matroid) := Boolean => (M, N) -> (
 	false
 )
 
+isBinary = method()
+isBinary Matroid := Boolean => M -> (
+	I := ideal dual M;
+	if #I_* > #(ideal M)_* then I = ideal M;
+	all(subsets(I_*, 2), s -> (lcm s//gcd s) % I == 0)
+)
+
 Matroid + Matroid := (M, N) -> (
 	(E, B2) := (M_*, bases N);
 	if not(E === N_*) then (
@@ -403,30 +411,27 @@ components Matroid := List => M -> (
 )
 
 isConnected Matroid := Boolean => M -> (
-     I := ideal M;
+     I := ideal dual M;
+	if #I_* > #(ideal M)_* then I = ideal M;
+     -- all(subsets(gens ring I, 2), s -> (product s) % I == 0)
      all(subsets(gens ring I, 2)/product, p -> any(I_*, g -> g % p == 0) )
 )
 
 is3Connected = method()
-is3Connected Matroid := Boolean => M -> isConnected M and not hasSeparator(M, 2)
+is3Connected Matroid := Boolean => M -> isConnected M and getSeparation(M, 2) === null
 
-hasSeparator = method()
-hasSeparator (Matroid, ZZ) := Boolean => (M, k) -> (
-     if k == 1 then return not isConnected M;
+getSeparation = method()
+getSeparation (Matroid, ZZ) := Set => (M, k) -> (
+     -- if k < 2 then error "Expected k >= 2 - use components(M) to find 1-separators.";
      if debugLevel > 0 then print "Checking existence of minimal k-separator...";
      indepCocircs := select(circuits dual M, c -> #c == k and not isDependent(M, c));
      coindepCircs := select(circuits M, c -> #c == k and not isDependent(dual M, c));
-     if any(indepCocircs | coindepCircs, X -> rank(M, X) + rank(dual M, X) - k <= k-1) then return true;
-     if debugLevel > 0 then print "Computing ranks of flats for M and M*...";
-     (fv1, fv2) := (M, dual M)/fVector;
+     for X in indepCocircs | coindepCircs do if rank(M, X) + rank(dual M, X) - k <= k-1 then return X;
      if debugLevel > 0 then print "Checking existence of nonminimal k-separator...";
      flatsCoflats := toList(set flats M * set flats dual M);
-     sepCands := select(flatsCoflats, X -> #X > k and #X < #M_* - k);
-     for X in sepCands do if rank(M, X) + rank(dual M, X) - #X <= k-1 then ( 
-          print("Found separator: " | toString toList X); 
-          return true 
-     );
-     false
+     sepCands := reverse sort(select(flatsCoflats, X -> #X > k and #X < #M_* - k), f -> #f);
+     for X in sepCands do if rank(M, X) + rank(dual M, X) - #X <= k-1 then return X;
+     null
 )
 
 relaxation = method()
@@ -2114,9 +2119,9 @@ doc ///
 			Many families of matroids can be defined by a 
 			list of forbidden minors: i.e. a matroid M is in the family
 			iff M does not have any of the forbidden minors as a minor. 
-			For instance, a matroid is representable over F_2
-			iff it does not have U_{2,4} as a minor, i.e. U_{2,4} is 
-			the (sole) forbidden minor for binary matroids.
+			For instance, a matroid is representable over F_2 iff it does
+			not have U_{2,4} as a minor, i.e. U_{2,4} is the (sole)
+			forbidden minor for @TO2{isBinary, "binary matroids"}@.
 
 			If a minor is found that is 
 			@TO2{(areIsomorphic, Matroid, Matroid), "isomorphic"}@ 
@@ -2128,6 +2133,47 @@ doc ///
 			time hasMinor(M6, M5)
 	SeeAlso
 		minor
+		isBinary
+///
+
+doc ///
+	Key
+		isBinary
+		(isBinary, Matroid)
+	Headline
+		whether a matroid is representable over F_2
+	Usage
+		isBinary M
+	Inputs
+		M:Matroid
+	Outputs
+		:Boolean
+			whether M is binary
+	Description
+		Text
+			Determines if M is a binary matroid, i.e. is representable
+			over the field $F_2$ of 2 elements.
+			
+			A matroid is representable over F_2 iff it does
+			not have U_{2,4} as a minor. However, this method does
+			not go through @TO hasMinor@, for efficiency reasons:
+			rather it checks whether the symmetric difference of any 2
+			distinct circuits is dependent.
+
+			Note: in general, determining representability is a difficult
+			computational problem. For instance, assuming access to 
+			an independence oracle, it is known that the problem of 
+			determining whether a matroid is binary cannot be solved 
+			in polynomial time.
+			
+		Example
+			M5 = matroid completeGraph 5
+			isBinary M5
+			U48 = uniformMatroid(4, 8)
+			isBinary U48
+	SeeAlso
+		hasMinor
+		representationOf
 ///
 
 doc ///
@@ -2330,6 +2376,125 @@ doc ///
 	SeeAlso
 		circuits
 		(symbol ++, Matroid, Matroid)
+///
+
+doc ///
+	Key
+		(isConnected, Matroid)
+	Headline
+		whether a matroid is connected
+	Usage
+		isConnected M
+	Inputs
+		M:Matroid
+	Outputs
+		:Boolean
+			whether M is connected
+	Description
+		Text
+			A matroid M is called connected if for every pair of distinct 
+			elements f, g in M, there is a circuit containing both of them.
+			This turns out to be equivalent to saying that there does not 
+			exist an element e in M with rank({e}) + rank(M - {e}) = rank(M)
+			(note that <= always holds by submodularity of the rank function).
+			
+			This method checks connectivity using the first definition above.
+			The second definition generalizes to higher connectivity - cf.
+			@TO is3Connected@. In the language of higher connectivity,
+			a matroid is connected (in the sense of the two definitions above)
+			if and only if it is 2-connected, i.e. has no 1-separation.
+			
+			To obtain the connected components of a matroid, use
+			@TO2{(components, Matroid), "components"}@.
+			
+		Example
+			M = matroid graph({{0,1},{0,2},{1,2},{3,4},{4,5}})
+			isConnected M
+			C = components M
+			all(C, isConnected)
+	SeeAlso
+		(components, Matroid)
+		is3Connected
+///
+
+doc ///
+	Key
+		is3Connected
+		(is3Connected, Matroid)
+	Headline
+		whether a matroid is 3-connected
+	Usage
+		is3Connected M
+	Inputs
+		M:Matroid
+	Outputs
+		:Boolean
+			whether M is 3-connected
+	Description
+		Text
+			A matroid M is called m-connected if M has no k-separations for 
+			k < m (see @TO getSeparation@ for the definition of a k-separation). 
+			Thus a matroid is 3-connected if it has no 2-separations
+			(or 1-separations). 
+			
+		Example
+			U1 = uniformMatroid(1, 4)
+			isConnected U1
+			is3Connected U1
+			U2 = uniformMatroid(2, 4)
+			isConnected U2
+			is3Connected U2
+	SeeAlso
+		(isConnected, Matroid)
+		getSeparation
+///
+
+doc ///
+	Key
+		getSeparation
+		(getSeparation, Matroid, ZZ)
+	Headline
+		finds a k-separation of a matroid
+	Usage
+		getSeparation(M, k)
+	Inputs
+		M:Matroid
+		k:ZZ
+	Outputs
+		:Set
+			a k-separation of M, if one exists, or @TO null@ if none exists
+	Description
+		Text
+			For a matroid M on a ground set E, and k >= 1,
+			a (2-)partition (X, E - X) of E(M) is called a k-separation of M if
+			|X| >= k, |E - X| >= k, and rank(X) + rank(E - X) - rank(M) <= k-1.
+			The separation is called minimal if either |X| = k or |E - X| = k.
+			
+			This method computes a k-separation of M, if one exists. 
+			If no k-separation of M exists, then @TO null@ is returned.
+			
+			Efficiency is achieved by using special structure of k-separations:
+			if (X, E - X) is a minimal k-separation (and no m-separation with 
+			m < k exists) with |X| = k, then X is either an independent cocircuit
+			or a coindependent circuit. On the other hand, if (X, E - X) 
+			is a nonminimal separation with |E - X| minimal, then X is both a 
+			flat and a coflat. In particular, if the ranks of all flats have 
+			been previously computed (e.g. via 
+			@TO2{(fVector, Matroid), "fVector"}@), then this method should
+			finish quickly.
+			
+			For k = 1, it is generally more efficient to use 
+			@TO2{(components, Matroid), "components"}@ and 
+			@TO2{(isConnected, Matroid), "isConnected"}@ than this
+			method.
+			
+		Example
+			G = graph({{0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,0},{0,2},{0,3},{0,4},{1,3},{3,5},{3,6}})
+			M = matroid G
+			getSeparation(M, 2)
+	SeeAlso
+		(isConnected, Matroid)
+		is3Connected
 ///
 
 doc ///
