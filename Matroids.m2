@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.2.1",
-	Date => "January 5, 2020",
+	Version => "1.2.2",
+	Date => "July 15, 2020",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -51,6 +51,9 @@ export {
 	"isBinary",
 	"is3Connected",
 	"getSeparation",
+	"seriesConnection",
+	"parallelConnection",
+	"sum2",
 	"relaxation",
 	"representationOf",
 	"quickIsomorphismTest",
@@ -385,7 +388,7 @@ Matroid + Matroid := (M, N) -> (
 		phi := hashTable apply(#N.groundSet, i -> i => position(E, e -> e === N_i));
 		B2 = bases N/(b -> b/(i -> phi#i));
 	);
-	H := partition(b -> #b, unique flatten table(bases M, B2, (b,c) -> b+c));
+	H := partition(b -> #b, unique flatten table(bases M, B2, plus));
 	matroid(E, H#(max keys H))
 )
 
@@ -394,7 +397,7 @@ Matroid ++ Matroid := (M, N) -> (
 	B := bases N/(b -> b/(i -> i + n));
 	E1 := (M_*)/(e -> (e, 0));
 	E2 := (N_*)/(e -> (e, 1));
-	matroid(E1 | E2, unique flatten table(bases M, B, (b, c) -> b + c))
+	matroid(E1 | E2, unique flatten table(bases M, B, plus))
 )
 
 getComponentsRecursive = method()
@@ -413,7 +416,6 @@ components Matroid := List => M -> (
 isConnected Matroid := Boolean => M -> (
      I := ideal dual M;
 	if #I_* > #(ideal M)_* then I = ideal M;
-     -- all(subsets(gens ring I, 2), s -> (product s) % I == 0)
      all(subsets(gens ring I, 2)/product, p -> any(I_*, g -> g % p == 0) )
 )
 
@@ -423,6 +425,7 @@ is3Connected Matroid := Boolean => M -> isConnected M and getSeparation(M, 2) ==
 getSeparation = method()
 getSeparation (Matroid, ZZ) := Set => (M, k) -> (
      -- if k < 2 then error "Expected k >= 2 - use components(M) to find 1-separators.";
+     if k > #M_*/2 then ( print "No k-separation exists for size reasons"; return null );
      if debugLevel > 0 then print "Checking existence of minimal k-separator...";
      indepCocircs := select(circuits dual M, c -> #c == k and not isDependent(M, c));
      coindepCircs := select(circuits M, c -> #c == k and not isDependent(dual M, c));
@@ -432,6 +435,27 @@ getSeparation (Matroid, ZZ) := Set => (M, k) -> (
      sepCands := reverse sort(select(flatsCoflats, X -> #X > k and #X < #M_* - k), f -> #f);
      for X in sepCands do if rank(M, X) + rank(dual M, X) - #X <= k-1 then return X;
      null
+)
+
+seriesConnection = method()
+seriesConnection (Matroid, Matroid) := Matroid => (M, N) -> ( -- assume basepoint of 0
+	if member(0, loops M) then return (M / set{0}) ++ N;
+	if member(0, coloops M) then M ++ (N \ set{0});
+	n := #M_*;
+	D := apply(circuits N, c -> c/(i -> if i > 0 then i = i + n - 1 else 0));
+	C1 := select(circuits M, c -> not member(0, c));
+	D1 := select(D, c -> not member(0, c));
+	(C2, D2) := (circuits M - set C1, D - set D1);
+	matroid(toList(0..n+#N_*-2), C1 | D1 | flatten table(C2, D2, plus), EntryMode => "circuits")
+)
+
+parallelConnection = method()
+parallelConnection (Matroid, Matroid) := Matroid => (M, N) -> dual seriesConnection(dual M, dual N)
+
+sum2 = method()
+sum2 (Matroid, Matroid) := Matroid => (M, N) -> (
+	if member(0, loops M | loops N | coloops M | coloops N) then error "Expected basepoint 0 to not be a coloop in both M and N";
+	seriesConnection(M, N) / set{0}
 )
 
 relaxation = method()
@@ -488,14 +512,18 @@ isomorphism (Matroid, Matroid) := HashTable => (M, N) -> ( -- assumes (M, N) sat
 		c0slice = sliceBySize(C1#0, C1);
 		(last values c0slice)#0
 	); -- creates maximal list of disjoint circuits in M, covering as much of M.groundSet as possible
-	H = apply(coverCircuits, c -> (c, select(D, d -> #d == #c and (pairs sliceBySize(c, C))/last/sizes/tally === (pairs sliceBySize(d, D))/last/sizes/tally))); -- creates list of ordered pairs: first element is member of coverCircuits, second element is list of circuits in N which have the same "intersection size pattern" as the first element
+	 -- creates list of ordered pairs: first element is member of coverCircuits, 
+	 -- second element is list of circuits in N which have the same "intersection size pattern" as the first element
+	H = apply(coverCircuits, c -> (c, select(D, d -> #d == #c and (pairs sliceBySize(c, C))/last/sizes/tally === (pairs sliceBySize(d, D))/last/sizes/tally)));
 	if min sizes(H/last) == 0 then return;
 	candidates = {H};
+	 -- "de-nests" second-element lists of H (i.e. each list member becomes its own item, 
+	 -- but keeping only those which are disjoint from previously matched circuits of N
 	for i to #coverCircuits-1 do (
 		candidates = flatten apply(candidates, cand -> apply(#last(cand#i), j -> (
 			append(cand_{0..<i}, (coverCircuits#i, (last(cand#i))#j)) | apply(cand_{i+1..#coverCircuits-1}, S -> (S#0, select(S#1, s -> #(s*((last(cand#i))#j)) == 0)))
 		)))
-	); -- "de-nests" second-element lists of H (i.e. each list member becomes its own item, but keeping only those which are disjoint from previously matched circuits of N
+	);
 	extraElts = M.groundSet - flatten(coverCircuits/toList);
 	E = flatten(append(coverCircuits, extraElts)/keys/sort);
 	if #extraElts > 0 then candidates = apply(candidates, cand -> cand | {(extraElts, N.groundSet - flatten(cand/last/toList))});
@@ -520,13 +548,17 @@ quickIsomorphismTest (Matroid, Matroid) := String => (M, N) -> (
 	if M == N then ( if debugLevel > 0 then print "Matroids are equal"; return "true" );
 	if not(betti ideal M === betti ideal N) then return "false";
 	if min(b, binomial(e, r) - b) <= 1 then ( if debugLevel > 0 then print "At most 1 basis/nonbasis"; return "true" );
-	try ( alarm 1; if not betti res dual ideal M === betti res dual ideal N then return "false" );
-	"Could be isomorphic"
+	try ( 
+		alarm 2; 
+		(BM, BN) := (M, N)/ideal/dual/res/betti; 
+		alarm 0; 
+		if not BM === BN then "false" else "Could be isomorphic"
+	) else "Could be isomorphic"
 )
 
 areIsomorphic (Matroid, Matroid) := Boolean => (M, N) -> (
 	testResult := quickIsomorphismTest(M, N);
-	if testResult == "Could be isomorphic" then not(isomorphism(M, N) === null) else value testResult
+	if member(testResult, {null, "Could be isomorphic"}) then not(isomorphism(M, N) === null) else value testResult
 )
 
 tuttePolynomial Matroid := RingElement => M -> (
@@ -2441,9 +2473,7 @@ doc ///
 			U1 = uniformMatroid(1, 4)
 			isConnected U1
 			is3Connected U1
-			U2 = uniformMatroid(2, 4)
-			isConnected U2
-			is3Connected U2
+			is3Connected matroid completeMultipartiteGraph {3,3}
 	SeeAlso
 		(isConnected, Matroid)
 		getSeparation
