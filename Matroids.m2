@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.2.2",
-	Date => "July 15, 2020",
+	Version => "1.2.3",
+	Date => "January 15, 2021",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -698,9 +698,9 @@ specificMatroid String := Matroid => name -> (
 	) else if name == "vamos" then (
 		relaxation(specificMatroid "V8+", set{4,5,6,7})
 	) else if name == "pappus" then (
-		matroid(toList(0..8), {{0,1,2},{0,3,7},{0,4,8},{1,3,6},{1,5,8},{2,4,6},{2,5,7},{6,7,8}}/set, EntryMode => "nonbases")
+		matroid(toList(0..8), {{0,1,2},{3,4,5},{0,3,7},{0,4,8},{1,3,6},{1,5,8},{2,4,6},{2,5,7},{6,7,8}}/set, EntryMode => "nonbases")
 	) else if name == "nonpappus" then (
-		relaxation(specificMatroid "pappus", set{6,7,8})
+		relaxation(specificMatroid "pappus", set{3,4,5})
 	) else if name == "AG32" then (
 		affineGeometry(3, 2)
 	) else if name == "R10" then (
@@ -2241,7 +2241,7 @@ doc ///
 		Example
 			P = specificMatroid "pappus"
 			NP = specificMatroid "nonpappus"
-			NP == relaxation(P, set{6,7,8})
+			NP == relaxation(P, set{3,4,5})
 	Caveat
 		Note that relaxation does not change the ground set. Thus e.g.
 		@TO representationOf@ will return the same for both the Fano and
