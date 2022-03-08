@@ -1,12 +1,13 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.2.3",
-	Date => "January 15, 2021",
+	Version => "1.4.5",
+	Date => "Mar 4, 2022",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
 		HomePage => "https://math.berkeley.edu/~jchen"}},
 	Headline => "a package for computations with matroids",
+	Keywords => {"Matroids"},
 	HomePage => "https://github.com/jchen419/Matroids-M2",
 	PackageExports => {"Graphs", "Posets"},
 	DebuggingMode => false,
@@ -18,7 +19,7 @@ newPackage("Matroids",
 	     "published article URI" => "https://msp.org/jsag/2019/9-1/p03.xhtml",
 	     "published article DOI" => "10.2140/jsag.2019.9.19",
 	     "published code URI" => "https://msp.org/jsag/2019/9-1/jsag-v9-n1-x03-Matroids.m2",
-	     "repository code URI" => "http://github.com/Macaulay2/M2/blob/master/M2/Macaulay2/packages/....m2",
+	     "repository code URI" => "http://github.com/Macaulay2/M2/blob/master/M2/Macaulay2/packages/Matroids.m2",
 	     "release at publication" => "cf37f5a1eefc2fe7e6eef2868718256106805027",	    -- git commit number in hex
 	     "version at publication" => "0.9.7",
 	     "volume number" => "9",
@@ -33,6 +34,7 @@ export {
 	"groundSet",
 	"indicesOf",
 	"bases",
+	"ranks",
 	"nonbases",
 	"circuits",
 	"fundamentalCircuit",
@@ -55,7 +57,9 @@ export {
 	"parallelConnection",
 	"sum2",
 	"relaxation",
+	"representation",
 	"representationOf",
+	"relabel",
 	"quickIsomorphismTest",
 	"getIsos",
 	"tutteEvaluate",
@@ -70,18 +74,23 @@ export {
 	"idealChowRing",
 	"cogeneratorChowRing",
 	"specificMatroid",
-	"allMatroids"
+	"allMatroids",
+	"allMinors",
+	"toSageMatroid",
+	"fromSageMatroid"
 }
 
 Matroid = new Type of HashTable
 Matroid.synonym = "matroid"
+
+largeNumBases := 100
 
 globalAssignment Matroid
 net Matroid := M -> (
 	net ofClass class M | " of rank " | toString(M.rank) | " on " | toString(#M.groundSet) | " elements"
 )
 
-Matroid == Matroid := (M, N) -> set bases M === set bases N and M.groundSet === N.groundSet
+Matroid == Matroid := (M, N) -> M.groundSet === N.groundSet and set bases M === set bases N
 
 matroid = method(Options => {EntryMode => "bases", ParallelEdges => {}, Loops => {}})
 matroid (List, List) := Matroid => opts -> (E, L) -> (
@@ -107,13 +116,13 @@ matroid (List, List) := Matroid => opts -> (E, L) -> (
 		M.cache.circuits = L;
 	) else if opts.EntryMode == "nonbases" then M.cache.nonbases = L;
 	M.cache.groundSet = E;
-	M.cache.rankFunction = new MutableHashTable;
+	M.cache.ranks = new MutableHashTable;
 	M
 )
 matroid List := Matroid => opts -> B -> matroid(unique flatten B, B, opts)
 matroid Matrix := Matroid => opts -> A -> (
 	k := rank A;
-	matroid(apply(numcols A, i -> matrix A_i), (select(subsets(numcols A, k), S -> rank A_S == k))/set)
+	setRepresentation(matroid(apply(numcols A, i -> A_{i}), (select(subsets(numcols A, k), S -> rank A_S == k))/set), A)
 )
 matroid Graph := Matroid => opts -> G -> (
 	P := opts.ParallelEdges;
@@ -124,7 +133,7 @@ matroid Graph := Matroid => opts -> G -> (
 	for i from 0 to #P - 1 do (
 		C = C | select(C, c -> member(E#(P#i), c))/(c -> c - set{E#(P#i)} + set{e+i}) | {set{E#(P#i), e + i}};
 	);
-	matroid(edges G | P | L, C | apply(#L, i -> set{e + #P + i}), EntryMode => "circuits")
+	setRepresentation(matroid(edges G | P | L, C | apply(#L, i -> set{e + #P + i}), EntryMode => "circuits"), sub(incidenceMatrix G, ZZ/2))
 )
 matroid (List, MonomialIdeal) := Matroid => opts -> (E, I) -> (
 	allVars := product gens ring I;
@@ -139,13 +148,18 @@ matroid Ideal := Matroid => opts -> I -> (
 	else error "Expected a squarefree monomial ideal"
 )
 
+setRepresentation = (M, A) -> (
+	M.cache.representation = A;
+	M.cache.rankFunction = S -> rank A_S;
+	M
+)
+
 ideal Matroid := MonomialIdeal => M -> ( -- Stanley-Reisner ideal of independence complex
-	if not M.cache.?ideal then (
+	if M.cache.?ideal then M.cache.ideal else M.cache.ideal = (
 		x := getSymbol "x";
 		R := QQ(monoid [x_0..x_(#M.groundSet - 1)]);
-		M.cache.ideal = dual monomialIdeal({0_R} | apply(bases M, b -> product(toList(M.groundSet - b) /(i -> R_i))))
-	);
-	M.cache.ideal
+		dual monomialIdeal({0_R} | apply(bases M, b -> product(toList(M.groundSet - b) /(i -> R_i))))
+	)
 )
 
 isWellDefined Matroid := Boolean => M -> (
@@ -212,14 +226,12 @@ bases Matroid := List => M -> M.bases
 
 nonbases = method()
 nonbases Matroid := List => M -> (
-	if not M.cache.?nonbases then M.cache.nonbases = subsets(M.groundSet, rank M) - set M.bases;
-	M.cache.nonbases
+	if M.cache.?nonbases then M.cache.nonbases else M.cache.nonbases = subsets(M.groundSet, rank M) - set M.bases
 )
 
 circuits = method()
 circuits Matroid := List => M -> (
-	if not M.cache.?circuits then M.cache.circuits = (ideal M)_*/indices/set;
-	M.cache.circuits
+	if M.cache.?circuits then M.cache.circuits else M.cache.circuits = (ideal M)_*/indices/set
 )
 
 fundamentalCircuit = method()
@@ -250,21 +262,22 @@ isDependent (Matroid, Set) := Boolean => (M, S) -> (
 rank Matroid := ZZ => M -> M.rank
 rank (Matroid, List) := ZZ => (M, S) -> rank(M, set indicesOf(M, S))
 rank (Matroid, Set) := ZZ => (M, S) -> (
-	if not M.cache.rankFunction#?S then (
-		currentRank := 0;
-		if #bases M > 100 then (
+	if M.cache.ranks#?S then M.cache.ranks#S else M.cache.ranks#S = (
+		S0 := sort keys S;
+		if M.cache.?rankFunction then (M.cache.rankFunction)(S0)
+		else if #bases M > largeNumBases then (
 			I := ideal M; R := ring I;
-			currentRank = dim (map((coefficientRing R)(monoid [(gens R)_(keys S)]), R))(I);
+			dim (map((coefficientRing R)(monoid [(gens R)_S0]), R))(I)
 		) else (
+			currentRank := 0;
 			maxRank := min(#S, rank M);
 			for b in bases M do (
 				currentRank = max(currentRank, #(b*S));
-				if currentRank == maxRank then return currentRank;
+				if currentRank == maxRank then break;
 			);
-		);
-		M.cache.rankFunction#S = currentRank;
-	);
-	M.cache.rankFunction#S
+			currentRank
+		)
+	)
 )
 
 closure = method()
@@ -281,8 +294,7 @@ closure (Matroid, Set) := Set => (M, S) -> (
 
 hyperplanes = method()
 hyperplanes Matroid := List => M -> (
-	if not M.cache.?hyperplanes then M.cache.hyperplanes = (circuits dual M)/(c -> M.groundSet - c);
-	M.cache.hyperplanes
+	if M.cache.?hyperplanes then M.cache.hyperplanes else M.cache.hyperplanes = (circuits dual M)/(c -> M.groundSet - c)
 )
 
 flats = method()
@@ -294,7 +306,7 @@ flats (Matroid, ZZ) := List => (M, r) -> ( -- returns flats of rank r
 	unique (select(subsets(M.groundSet, r), s -> rank_M s == r)/closure_M)
 )
 flats Matroid := List => M -> (
-	if not M.cache.?flats then (
+	if M.cache.?flats then M.cache.flats else M.cache.flats = (
 		H := hyperplanes M;
 		flatList := H;
 		numFlatsFound := 0;
@@ -302,9 +314,8 @@ flats Matroid := List => M -> (
 			numFlatsFound = #flatList;
 			flatList = unique flatten apply(flatList, F -> apply(H, h -> h*F));
 		);
-		M.cache.flats = append(sort(flatList, f -> #f), M.groundSet);
-	);
-	M.cache.flats
+		append(sort(flatList, f -> #f), M.groundSet)
+	)
 )
 
 latticeOfFlats = method()
@@ -313,25 +324,25 @@ latticeOfFlats Matroid := Poset => M -> poset(flats M/toList, (a, b) -> isSubset
 fVector Matroid := HashTable => opts -> M -> hashTable pairs tally(flats M/rank_M)
 
 dual Matroid := Matroid => {} >> opts -> M -> (
-	if not M.cache.?dual then (
+	if M.cache.?dual then M.cache.dual else M.cache.dual = (
 		D := matroid(M_*, (bases M)/(b -> M.groundSet - b));
 		D.cache.dual = M;
-		M.cache.dual = D;
-	);
-	M.cache.dual
+		D
+	)
 )
 
 restriction = method()
 restriction (Matroid, List) := Matroid => (M, S) -> restriction(M, set indicesOf(M, S))
 restriction (Matroid, Set) := Matroid => (M, S) -> ( -- assumes S is a subset of M.groundSet (not M_*)
 	S0 := sort keys S;
-	if #bases M > 100 then (
+	matroid(M_S0, if #bases M > largeNumBases then (
 		I := ideal M; R := ring I;
-		return matroid(M_S0, monomialIdeal (map((coefficientRing R)(monoid [(gens R)_(S0)]), R))(I));
-	);
-	B := bases M/(b -> S*b);
-	r := max sizes B;
-	matroid(M_S0, indicesOf(S0, unique select(B, b -> #b == r) /toList))
+		monomialIdeal (map((coefficientRing R)(monoid [(gens R)_(S0)]), R))(I)
+	) else (
+		B := bases M/(b -> S*b);
+		r := max sizes B;
+		indicesOf(S0, unique select(B, b -> #b == r) /toList)
+	))
 )
 Matroid | Set := (M, S) -> restriction(M, S)
 Matroid | List := (M, S) -> restriction(M, S)
@@ -356,17 +367,24 @@ minor (Matroid, Set, Set) := Matroid => (M, X, Y) -> (
 	N \ set((toList Y)/(y -> position(N_*, e -> M_y === e)))
 )
 
-hasMinor = method()
-hasMinor (Matroid, Matroid) := Boolean => (M, N) -> (
-	n := #N.groundSet;
-	m := #M.groundSet;
-	if n > m or #bases N > #bases M then return false;
-	for X in independentSets(M, rank M - rank N) do (
-		MX := M / X;
-		for Y in independentSets(dual MX, m - n - rank M + rank N) do (
-			if areIsomorphic(N, MX \ Y) then (
-				if debugLevel > 0 then print("Contract "|toString X|", delete "|toString (Y/(y -> y + #select(toList X, x -> x <= y))));
-				return true;
+hasMinor = method(Options => {Strategy => "flats"})
+hasMinor (Matroid, Matroid) := Boolean => opts -> (M, N) -> (
+	if opts.Strategy == "flats" and isSimple N then (
+		v := fVector N;
+		for f in select(flats M, f -> rank_M f == rank M - rank N) do (
+			if any(1..<rank N, i -> #select(flats M, F -> rank_M F == rank M - rank N + i and isSubset(f, F)) < v#i) then continue;
+			if hasMinor(M/f, N, Strategy => "independentSets") then return true;
+		);
+	) else (
+		(n, m) := (#N.groundSet, #M.groundSet);
+		if n > m or #bases N > #bases M then return false;
+		for X in independentSets(M, rank M - rank N) do (
+			MX := M / X;
+			for Y in independentSets(dual MX, m - n - rank M + rank N) do (
+				if areIsomorphic(N, MX \ Y) then (
+					if debugLevel > 0 then print("Contract "|toString X|", delete "|toString (Y/(y -> (sort toList(M.groundSet - X))#y)));
+					return true;
+				);
 			);
 		);
 	);
@@ -464,13 +482,30 @@ relaxation (Matroid, Set) := Matroid => (M, S) -> (
 	if member(S, circuits M) and member(S, hyperplanes M) then matroid(M_*, append(bases M, S))
 	else error "Expected circuit-hyperplane"
 )
+relaxation Matroid := Matroid => M -> relaxation(M, first toList(set circuits M * set hyperplanes M))
 
 representationOf = method()
 representationOf Matroid := Thing => M -> (
-	if instance(M_0, Matrix) then transpose matrix((M_*)/(v -> flatten entries v))
-	else if all(M_*, c -> instance(c, Set) and #c <= 2) then (
+	if all(M_*, c -> instance(c, Set) and #c <= 2) then (
 		graph(join(M_*, (flatten(select(M_*, c -> #c == 1)/toList))/(v -> {v,v})))
-	) else error "No representation found"
+	-- ) else if all(M_*, c -> instance(c, Matrix)) then matrix{M_*}
+	) else if M.cache.?representation then M.cache.representation
+	else ( << "No representation stored" << endl; null )
+)
+
+relabel = method()
+relabel (Matroid, HashTable) := Matroid => (M, perm) -> (
+    if set keys perm =!= set values perm then error "Not a permutation!";
+    H := hashTable apply(#M_*, i -> i => if perm#?i then perm#i else i);
+    matroid(M_*, (bases M)/(b -> b/(i -> H#i)))
+)
+relabel (Matroid, List) := Matroid => (M, perm) -> (
+    if not all(perm, e -> instance(e, Option)) then perm = apply(#M_*, i -> i => perm#i);
+    relabel(M, hashTable perm)
+)
+relabel Matroid := Matroid => M -> (
+    E := toList(0..<#M_*);
+    relabel(M, (transpose{E, random E})/toSequence//hashTable)
 )
 
 -- Recursively finds all permutations inducing a bijection on circuits (note: permutations(10) is already slow on a typical machine)
@@ -548,13 +583,17 @@ quickIsomorphismTest (Matroid, Matroid) := String => (M, N) -> (
 	if M == N then ( if debugLevel > 0 then print "Matroids are equal"; return "true" );
 	if not(betti ideal M === betti ideal N) then return "false";
 	if min(b, binomial(e, r) - b) <= 1 then ( if debugLevel > 0 then print "At most 1 basis/nonbasis"; return "true" );
-	try ( 
-		alarm 2; 
-		(BM, BN) := (M, N)/ideal/dual/res/betti; 
-		alarm 0; 
-		if not BM === BN then "false" else "Could be isomorphic"
-	) else "Could be isomorphic"
-)
+	try (
+	     alarm 2; 
+	     ret := if not betti res dual ideal M === betti res dual ideal N then "false";
+	     alarm 0;
+	     ret
+	     ) 
+	else (
+	     alarm 0;
+	     "Could be isomorphic"
+	     )
+	)
 
 areIsomorphic (Matroid, Matroid) := Boolean => (M, N) -> (
 	testResult := quickIsomorphismTest(M, N);
@@ -562,8 +601,7 @@ areIsomorphic (Matroid, Matroid) := Boolean => (M, N) -> (
 )
 
 tuttePolynomial Matroid := RingElement => M -> (
-	if not M.cache.?tuttePolynomial then M.cache.tuttePolynomial = tuttePolynomial(M, ZZ(monoid(["x","y"]/getSymbol)));
-	M.cache.tuttePolynomial
+	if M.cache.?tuttePolynomial then M.cache.tuttePolynomial else M.cache.tuttePolynomial = tuttePolynomial(M, ZZ(monoid(["x","y"]/getSymbol)))
 )
 tuttePolynomial (Matroid, Ring) := RingElement => (M, R) -> (
 	a := coloops M;
@@ -600,7 +638,8 @@ simpleMatroid Matroid := Matroid => M -> M \ set(select((ideal M)_*, m -> first 
 
 uniformMatroid = method()
 uniformMatroid (ZZ, ZZ) := Matroid => (k, n) -> (
-	if 0 <= k and k <= n then matroid(toList(0..<n), subsets(n, k)/set) else error(k | " is not between 0 and " | n)
+	if k > n then (k,n) = (n,k);
+	matroid(toList(0..<n), subsets(n, k)/set)
 )
 
 affineGeometry = method()
@@ -679,7 +718,7 @@ idealChowRing Matroid := Ideal => M -> (
 )
 
 cogeneratorChowRing = method()
-cogeneratorChowRing Matroid := RingElement => M -> ( -- sorted flats makes this method 3x faster
+cogeneratorChowRing Matroid := RingElement => M -> ( -- sorted flats makes this 3x faster
 	t := getSymbol "t";
 	I := trim idealChowRing M;
 	R := ring I;
@@ -689,23 +728,37 @@ cogeneratorChowRing Matroid := RingElement => M -> ( -- sorted flats makes this 
 
 specificMatroid = method()
 specificMatroid String := Matroid => name -> (
-	if name == "fano" then (
+	if name == "U24" then (
+		uniformMatroid(2, 4)
+	) else if name == "C5" then (
+		matroid(toList(0..4), {{0,1,2}}, EntryMode => "nonbases")
+	) else if name == "P6" then (
+		matroid(toList(0..5), {{0,1,2}}, EntryMode => "nonbases")
+	) else if name == "Q6" then (
+		matroid(toList(0..5), {{0,1,2},{0,3,4}}, EntryMode => "nonbases")
+	) else if name == "fano" then (
 		projectiveGeometry(2, 2)
 	) else if name == "nonfano" then (
-		relaxation(specificMatroid "fano", set{1,3,4})
+		relaxation(specificMatroid "fano", set{4,5,6})
 	) else if name == "V8+" then (
 		matroid(toList(0..7), {{0,1,2,3},{0,3,4,5},{1,2,4,5},{0,3,6,7},{1,2,6,7},{4,5,6,7}}/set, EntryMode => "nonbases")
 	) else if name == "vamos" then (
 		relaxation(specificMatroid "V8+", set{4,5,6,7})
 	) else if name == "pappus" then (
-		matroid(toList(0..8), {{0,1,2},{3,4,5},{0,3,7},{0,4,8},{1,3,6},{1,5,8},{2,4,6},{2,5,7},{6,7,8}}/set, EntryMode => "nonbases")
+		matroid(toList(0..8), {{0,1,2},{0,4,6},{0,5,7},{1,3,6},{1,5,8},{2,3,7},{2,4,8},{3,4,5},{6,7,8}}/set, EntryMode => "nonbases")
 	) else if name == "nonpappus" then (
-		relaxation(specificMatroid "pappus", set{3,4,5})
+		relaxation(specificMatroid "pappus", set{6,7,8})
 	) else if name == "AG32" then (
 		affineGeometry(3, 2)
+	) else if name == "R9A" then (
+		matroid(toList(0..8),{{0,1,2,7},{0,1,3,4},{0,1,5,8},{0,2,3,8},{0,2,4,6},{0,3,6,7},{0,4,5,7},{1,2,3,5},{1,3,7,8},{1,4,6,8},{2,4,7,8},{3,4,5,8},{5,6,7,8}}, EntryMode => "nonbases")
+	) else if name == "R9B" then (
+		matroid(toList(0..8),{{0,1,2,7},{0,1,3,4},{0,1,6,8},{0,2,4,6},{0,3,5,8},{0,4,7,8},{1,2,3,5},{1,2,4,8},{1,3,7,8},{1,4,5,7},{2,3,6,7},{3,4,6,8},{5,6,7,8}}, EntryMode => "nonbases")
 	) else if name == "R10" then (
 		matroid(id_((ZZ/2)^5) | matrix{{-1_(ZZ/2),1,0,0,1},{1,-1,1,0,0},{0,1,-1,1,0},{0,0,1,-1,1},{1,0,0,1,-1}})
-	) else error "Name string must be one of: fano, nonfano, V8+, vamos, pappus, nonpappus, AG32, R10"
+	) else if name == "betsyRoss" then (
+		matroid(toList(0..10), {{0,2,5},{0,2,6},{0,3,8},{0,3,9},{0,5,6},{0,7,10},{0,8,9},{1,3,6},{1,3,7},{1,4,5},{1,4,9},{1,5,9},{1,6,7},{1,8,10},{2,4,7},{2,4,8},{2,5,6},{2,7,8},{2,9,10},{3,5,10},{3,6,7},{3,8,9},{4,5,9},{4,6,10},{4,7,8}}, EntryMode => "nonbases")
+	) else error "Name string must be one of: U24, C5, P6, Q6, fano, nonfano, V8+, vamos, pappus, nonpappus, AG32, R9A, R9B, R10, betsyRoss"
 )
 
 allMatroids = method()
@@ -724,6 +777,32 @@ allMatroids ZZ := List => n -> (
 	matroidList = {uniformMatroid(0, n)} | delete(null, matroidList);
 	L := toList(0..#matroidList - #select(matroidList, M -> 2*rank M == n) - 1);
 	matroidList | (matroidList_L / dual)_(rsort L)
+)
+
+allMinors = method()
+allMinors (Matroid, Matroid) := List => (M, N) -> (
+	flatten apply(independentSets(M, rank M - rank N), X -> (
+		C := M/X; 
+		apply(select(independentSets(dual C, #C.groundSet - #N.groundSet), Y -> areIsomorphic(N, C\Y)), Y -> {X, Y/(y -> (sort toList(M.groundSet - X))#y)})
+)))
+
+-- Sage matroid conversions
+toSageMatroid = method()
+toSageMatroid Matroid := String => M -> ( -- for matroids on <= 26 elements
+    alphabet := separate("","abcdefghijklmnopqrstuvwxyz");
+    groundSetStr := concatenate alphabet_(toList(0..<#M.groundSet));
+    basesStr := concatenate apply(bases M, B -> "'" | concatenate alphabet_(sort toList B) | "',");
+    "Matroid(groundset = '" | groundSetStr | "', bases = [" | substring(basesStr, 0, #basesStr - 1) | "])"
+)
+
+fromSageMatroid = method()
+fromSageMatroid String := Matroid => s -> (
+    L := separate("',",replace(" |\\[|\\]|groundset|bases|=","",s));
+    s0 := L#0;
+    s0 = substring(s0,0,8) | "{" | demark(",", separate("", substring(s0,9)));
+    L = drop(L, -1) | {replace("'\\)","",L#-1)};
+    bases := demark("},", apply(drop(L, 1), t -> "{" | demark(",", drop(separate("", t), 1))));
+    value(replace("M", "m", s0) | "}, {" | bases | "}})")
 )
 
 -- Miscellaneous general purpose helper functions
@@ -751,23 +830,25 @@ doc ///
 		Text
 			A matroid is a combinatorial structure abstracting the notion of 
 			(linear algebraic, graph-theoretic) independence. This package 
-			provides methods to perform computations with matroids in Macaulay2.
+			provides methods to perform computations with matroids in 
+			Macaulay2.
 
 			This package provides capabilities for converting between various 
 			representations of matroids, creating linear and graphic 
 			matroids from a matrix or graph, forming and detecting existence 
 			of minors, computing Tutte polynomials, and additional 
-			functions for applications of matroids to areas like optimization and
-			convex geometry.
+			functions for applications of matroids to areas like optimization
+			and convex geometry.
 
-			Matroids are stored as pairs (E, B) of a ground set E and a list B of bases, 
-			which are maximal independent subsets of the ground set. Internally, a 
-			ground set of size n is always identified with the set $\{0, ..., n-1\}$, and 
-			thus all subsets of the ground set (e.g. bases, circuits, flats) are also treated 
-			as subsets of $\{0, ..., n-1\}$ (for more, cf. @TO groundSet@). However, the 
-			actual elements of the ground set are allowed to be arbitrary (e.g. 
-			integers, symbols, vectors, edges in a graph), and can be accessed by
-			@TO2{(symbol _, Matroid, List), "taking subscripts"}@.
+			Matroids are stored as pairs (E, B) of a ground set E and a list 
+			B of bases, which are maximal independent subsets of the ground
+			set. Internally, a ground set of size n is always identified with
+			the set $\{0, ..., n-1\}$, and thus all subsets of the ground set
+			(e.g. bases, circuits, flats) are also treated as subsets of 
+			$\{0, ..., n-1\}$ (for more, cf. @TO groundSet@). However, the 
+			actual elements of the ground set are allowed to be arbitrary 
+			(e.g. integers, symbols, vectors, edges in a graph), and can be
+			accessed by @TO2{(symbol _, Matroid, List), "taking subscripts"}@.
 			
 		Example
 			M = matroid({a, matrix{{-1.2},{3.78}}, x, set{4,6}, -9}, {{a, x}, {x, -9}})
@@ -779,9 +860,10 @@ doc ///
 			tuttePolynomial M
 			
 		Text
-			A matroid can be specified by its bases, nonbases, circuits, from a 
-			matrix, graph, or ideal, or via a collection of predefined matroids. For more 
-			on how to construct a matroid, see @TO matroid@.
+			A matroid can be specified by its bases, nonbases, circuits, 
+			from a matrix, graph, or ideal, or via a collection of predefined
+			matroids. For more on how to construct a matroid, see 
+			@TO matroid@.
 
 			{\bf Reference} Oxley, Matroid Theory, second edition. Oxford University Press, 2011.
 ///
@@ -795,12 +877,12 @@ doc ///
 		Text
 			To see how to specify a matroid, see @TO matroid@.
 
-			In this package, the ground set of the matroid is always (internally) 
-			assumed to be a set of the form $\{0, ..., n-1\}$. This means that 
-			although the actual elements of the ground set can be arbitrary, 
-			all subsets of the ground set are specified by their indices, i.e. 
-			as a subset of $\{0, ..., n-1\}$ (this includes bases, circuits, flats, 
-			loops, etc.). 
+			In this package, the ground set of the matroid is always 
+			(internally) assumed to be a set of the form $\{0, ..., n-1\}$.
+			This means that although the actual elements of the ground set
+			can be arbitrary, all subsets of the ground set are specified by
+			their indices, i.e. as a subset of $\{0, ..., n-1\}$ (this
+			includes bases, circuits, flats, loops, etc.). 
 			
 			For convenience, the user can specify a subset of the ground set
 			either by indices (which are integers between 0 and n-1), or as 
@@ -860,7 +942,9 @@ doc ///
 		(matroid, Graph)
 		(matroid, Ideal)
 		(matroid, List, MonomialIdeal)
+		Loops
 		[matroid, Loops]
+		ParallelEdges
 		[matroid, ParallelEdges]
 	Headline
 		constructs a matroid
@@ -1074,15 +1158,17 @@ doc ///
 			whether or not a set of subsets satisfies the circuit elimination axiom
 	Description
 		Text
-			If E is a set and C is a collection of subsets of E such that (i) no two 
-			elements of C are comparable, and (ii): for C1, C2 in C and 
-			$e \in &nbsp; C1 \cap&nbsp;C2$, there exists $C3 \in &nbsp; C$ with 
-			$C \subseteq&nbsp;(C1 \cup&nbsp;C2) - e$, then C is the set of circuits of a 
-			matroid on E. Property (ii) is called the circuit elimination axiom, and
-			these characterize the collections of subsets of E which can be circuits for
-			a matroid on E. This method verifies if the circuit elimination axiom 
-			holds for the given input, and additionally whether the input has the 
-			correct keys and data types that an object of type Matroid has.
+			If E is a set and C is a collection of subsets of E such that 
+			(i) no two elements of C are comparable, and (ii): for C1, C2 in
+			C and $e \in &nbsp; C1 \cap&nbsp;C2$, there exists $C3 \in &nbsp;
+			C$ with $C \subseteq&nbsp;(C1 \cup&nbsp;C2) - e$, then C is the
+			set of circuits of a matroid on E. Property (ii) is called the
+			circuit elimination axiom, and these characterize the collections
+			of subsets of E which can be circuits for a matroid on E. This
+			method verifies if the circuit elimination axiom 
+			holds for the given input, and additionally whether the input has 
+			the correct keys and data types that an object of type Matroid
+			has.
 			
 		Example
 			isWellDefined matroid({a,b,c,d},{{a,b},{c,d}})
@@ -1145,23 +1231,24 @@ doc ///
 			has index 1, etc. 
 			
 			The key point is that all sets associated to the structure of a 
-			matroid - bases, circuits, flats, etc. - are subsets of M.groundSet
-			(not M&#95;*). In particular, they are also of class @TO Set@
-			(although a collection of them is usually a @TO List@), and 
-			are also indexed from 0 to n-1. (An exception here is loops and
-			coloops, which are given as a list of indices, rather than
+			matroid - bases, circuits, flats, etc. - are subsets of 
+			M.groundSet (not M&#95;*). In particular, they are also of class
+			@TO Set@ (although a collection of them is usually a @TO List@),
+			and are also indexed from 0 to n-1. (An exception here is loops
+			and coloops, which are given as a list of indices, rather than
 			single-element sets).
 			
 			A recommended way to circumvent this distinction between indices 
-			and elements is to use $\{0, ..., n-1\}$ as the actual elements of M, 
-			in which case an element is equal to its index in M.groundSet. Most methods
-			in this package will accept either a list of elements or a set of indices,
-			and if the elements of M are $\{0, ..., n-1\}$, then functionally there will
-			be no difference between inputting lists or sets.
+			and elements is to use $\{0, ..., n-1\}$ as the actual elements 
+			of M, in which case an element is equal to its index in
+			M.groundSet. Most methods in this package will accept either a
+			list of elements or a set of indices, and if the elements of M
+			are $\{0, ..., n-1\}$, then functionally there will be no
+			difference between inputting lists or sets.
 			
 			In summary: @TO2{List, "lists"}@ are used for elements in M, and 
-			given as sublists of M&#95;*, while @TO2{Set, "sets"}@ are used for 
-			indices, and given as subsets of M.groundSet.
+			given as sublists of M&#95;*, while @TO2{Set, "sets"}@ are used
+			for indices, and given as subsets of M.groundSet.
 			
 		Example
 			M = matroid({a,b,c,d},{{a,b},{a,c}})
@@ -1178,11 +1265,11 @@ doc ///
 			
 			Note in particular the types of the various outputs above.
 			
-			The following illustrates how to perform operations with a specified
-			subset of M.groundSet. In the final example, a list of indices is given, 
-			which goes against the conventions above, but the elements of the 
-			list are treated (correctly) as indices, and if debugLevel is greater
-			than 0, then a warning is printed.
+			The following illustrates how to perform operations with a 
+			specified subset of M.groundSet. In the final example, a list of
+			indices is given, which goes against the conventions above, but
+			the elements of the list are treated (correctly) as indices, and
+			if debugLevel is greater than 0, then a warning is printed.
 			
 		Example
 			N1 = M | {a,c,d}
@@ -1193,6 +1280,7 @@ doc ///
 			N3 == N2
 	SeeAlso
 		(symbol _, Matroid, List)
+		relabel
 ///
 
 doc ///
@@ -1277,10 +1365,10 @@ doc ///
 		Text
 		
 			The second case is with a matroid as input. Here the ambient 
-			list E is taken as the ground set of the matroid (i.e. E = M&#95;*),
-			and L should be a list of elements of M (not a list of lists); 
-			in this case the inverse of this method is given by 
-			@TO2{(symbol _, Matroid, List), "taking subscripts"}@
+			list E is taken as the ground set of the matroid 
+			(i.e. E = M&#95;*), and L should be a list of elements of M 
+			(not a list of lists); in this case the inverse of this method 
+			is given by @TO2{(symbol _, Matroid, List), "taking subscripts"}@
 			with respect to M.
 			
 		Example
@@ -1296,6 +1384,7 @@ doc ///
 			indices. For more on this, cf. @TO groundSet@.
 	SeeAlso
 		(symbol _, Matroid, List)
+		relabel
 ///
 
 doc ///
@@ -1322,19 +1411,20 @@ doc ///
 			which is the output of this method. 
 			
 			The minimal generators of the ideal correspond to minimal 
-			non-faces of the simplicial complex. As the faces of the independence
-			complex are precisely the independent sets, the minimal non-faces
-			are exactly the minimal dependent sets, i.e. the @TO circuits@ of M.
+			non-faces of the simplicial complex. As the faces of the
+			independence complex are precisely the independent sets, the
+			minimal non-faces are exactly the minimal dependent sets, i.e.
+			the @TO circuits@ of M.
 			
-			The facets of the simplicial complex correspond to @TO bases@ of M,
-			and thus also to irreducible components of the ideal of M; which 
-			are in bijection with the minimal generators of the Alexander dual 
-			ideal via taking complements.
+			The facets of the simplicial complex correspond to @TO bases@ of 
+			M, and thus also to irreducible components of the ideal of M;
+			which are in bijection with the minimal generators of the
+			Alexander dual ideal via taking complements.
 			
 			Internally, the ideal of the matroid is a fundamental complete 
 			invariant, and is heavily used in many algorithms in this package.
-			Accordingly, once the ideal of a matroid is computed, it is cached in 
-			the @TO CacheTable@ of the matroid, which speeds up any 
+			Accordingly, once the ideal of a matroid is computed, it is 
+			cached in the @TO CacheTable@ of the matroid, which speeds up any 
 			algorithm which requires the ideal as part of the input.
 			
 		Example
@@ -1411,7 +1501,8 @@ doc ///
 		Text
 			In any matroid, all basis elements have the same cardinality 
 			r (which is the rank of the matroid). The nonbases of a matroid 
-			are the subsets of the ground set of cardinality r that are dependent. 
+			are the subsets of the ground set of cardinality r that are 
+			dependent. 
 
 			Just as with @TO bases@ and @TO circuits@, nonbases are 
 			stored via their indices (rather than the elements of the ground 
@@ -1596,8 +1687,8 @@ doc ///
 			contained in a @TO2{bases, "basis"}@, or equivalently, 
 			does not contain a @TO2{circuits, "circuit"}@.
 			This method returns all independent subsets of the ground 
-			set of a fixed size $s$. If no size $s$ is given, returns a list of 
-			all independent sets of M.
+			set of a fixed size $s$. If no size $s$ is given, returns a 
+			list of all independent sets of M.
 			
 		Example
 			M = matroid({a,b,c,d},{{a,b},{a,c}})
@@ -1710,7 +1801,7 @@ doc ///
 	Description
 		Text
 			The closure of a subset S of a matroid (E, B) is the set 
-			cl(S) := \{x $\in$ E : rank(S) = rank(S $\cup$ \{x\}) \}. 
+			cl(S) := {x $\in$ E : rank(S) = rank(S $\cup \{x\}$) }.
 			The closure operator 2^E -> 2^E, S $\mapsto$ cl(S), 
 			completely determines the matroid (indeed, the maximal proper
 			closed sets - i.e. @TO2{(hyperplanes, Matroid), "hyperplanes"}@ -
@@ -1841,13 +1932,13 @@ doc ///
 	Description
 		Text
 			The lattice of flats of a matroid M is the set of flats of M, 
-			partially ordered by containment; i.e. F1 <= F2 if F1 is contained 
-			in F2. The lattice of flats of a matroid is a geometric lattice: i.e. 
-			it is atomic (every element is a join of atoms = rank 1 elements) 
-			and semimodular (h(x) + h(y) >= h(x &or; y) + h(x &and; y) for 
-			any x, y, where h is the height function = maximum length of 
-			a chain from 0). Conversely, every geometric lattice is the 
-			lattice of flats of a matroid.
+			partially ordered by containment; i.e. F1 <= F2 if F1 is 
+			contained in F2. The lattice of flats of a matroid is a geometric
+			lattice: i.e. it is atomic (every element is a join of atoms =
+			rank 1 elements) and semimodular (h(x) + h(y) >= h(x &or; y) + 
+			h(x &and; y) for any x, y, where h is the height function =
+			maximum length of a chain from 0). Conversely, every geometric
+			lattice is the lattice of flats of a matroid.
 			
 			If M and N are @TO2{(isSimple, Matroid), "simple matroids"}@
 			(i.e. no loops or parallel classes) with isomorphic lattice of 
@@ -1880,7 +1971,7 @@ doc ///
 		:HashTable
 	Description
 		Text
-			The f-vector of a matroid M is the invariant (f_0, f_1, ..., f_r), 
+			The f-vector of a matroid M is the invariant (f_0, f_1, ..., f_r),
 			where f_i is the number of @TO2{(rank, Matroid, Set), "rank"}@ 
 			i @TO flats@ of M, and r is the @TO2{(rank, Matroid), "rank"}@ 
 			of M. Note that f_0 = f_r = 1, as the set of @TO loops@ 
@@ -2008,10 +2099,11 @@ doc ///
 			of indices, or a @TO2{List, "list"}@ of elements in M
 	Outputs
 		:Matroid
-			the deletion M &#92; S
+			the deletion M \ S
 	Description
 		Text
-			The deletion M &#92; S is obtained by restricting to the complement of S.
+			The deletion M \ S is obtained by restricting to the 
+			complement of S.
 			
 		Example
 			M = matroid({a,b,c,d},{{a,b},{a,c}})
@@ -2045,8 +2137,8 @@ doc ///
 			the contraction M / S
 	Description
 		Text
-			The contraction of M by S is given by M/S := (M* &#92; S)*, 
-			where * stands for dual, and &#92; is deletion.
+			The contraction of M by S is given by M/S := (M* \ S)*, 
+			where * stands for dual, and \ is deletion.
 			
 		Example
 			M = matroid({a,b,c,d},{{a,b},{a,c}})
@@ -2076,10 +2168,10 @@ doc ///
 			of indices, or a @TO2{List, "list"}@ of elements in M, disjoint from X
 	Outputs
 		:Matroid
-			the minor M / X &#92; Y
+			the minor M / X \ Y
 	Description
 		Text
-			The minor M / X &#92; Y of M is given by contracting X and 
+			The minor M / X \ Y of M is given by contracting X and 
 			deleting Y from M. The resulting matroid is independent 
 			of the order in which deletion and contraction is done. If 
 			X (or Y) is a set (of indices in M.groundSet), then X is identified 
@@ -2098,18 +2190,21 @@ doc ///
 		Text	
 			
 			Note that there is potential ambiguity for the second argument - 
-			namely, whether or not Y is treated with respect to the ground set 
-			of M or M / X (which are different). This method assumes that the 
-			indices of Y (and X) are taken with respect to the ground set of M. 
+			namely, whether or not Y is treated with respect to the ground
+			set of M or M / X (which are different). This method assumes that
+			the indices of Y (and X) are taken with respect to the ground set
+			of M. 
 			
-			If one already has the indices Y0 of Y in M / X (or the indices X0 of 
-			X in M &#92; Y), one can simply use the notation M 
+			If one already has the indices Y0 of Y in M / X (or the indices
+			X0 of X in M \ Y), one can simply use the notation M 
 			@TO2{contraction, "/"}@ X @TO2{deletion, "\\"}@ Y0 
-			(or (M &#92; Y) / X0). Thus this method serves purely as a 
-			convenience, to save the user the (trivial) task of computing Y0 from Y.
+			(or (M \ Y) / X0). Thus this method serves purely as a 
+			convenience, to save the user the (trivial) task of computing Y0
+			from Y.
 			
-			If X and Y are not disjoint, then an error is thrown (thus one should
-			@TO2{(symbol -, Set, Set), "subtract"}@ X from Y beforehand).
+			If X and Y are not disjoint, then an error is thrown (thus one
+			should @TO2{(symbol -, Set, Set), "subtract"}@ X from Y
+			beforehand).
 			
 		Example
 			M5 = matroid completeGraph 5
@@ -2130,6 +2225,7 @@ doc ///
 	Key
 		hasMinor
 		(hasMinor, Matroid, Matroid)
+		[hasMinor, Strategy]
 	Headline
 		whether a matroid has a given minor
 	Usage
@@ -2146,7 +2242,7 @@ doc ///
 			from M by a contraction followed by a deletion. Since 
 			deletion and contraction by disjoint subsets commute, 
 			every sequence of deletion and contraction operations 
-			can be written as a single contraction and deletion.
+			can be written as a single contraction and a single deletion.
 			
 			Many families of matroids can be defined by a 
 			list of forbidden minors: i.e. a matroid M is in the family
@@ -2154,10 +2250,13 @@ doc ///
 			For instance, a matroid is representable over F_2 iff it does
 			not have U_{2,4} as a minor, i.e. U_{2,4} is the (sole)
 			forbidden minor for @TO2{isBinary, "binary matroids"}@.
-
-			If a minor is found that is 
-			@TO2{(areIsomorphic, Matroid, Matroid), "isomorphic"}@ 
-			to N, then the sets to be contracted and deleted are printed.
+			
+			There are 2 strategies for this method: the default (and 
+			generally fastest) method is ``Strategy => "flats"'', which 
+			can be sped up by precomputing the 
+			@TO2{(fVector, Matroid), "fVector"}@ of M. Otherwise, all
+			independent/coindependent sets of a certain size/rank are
+			iterated over.
 			
 		Example
 			(M4, M5, M6) = (4,5,6)/completeGraph/matroid
@@ -2241,7 +2340,7 @@ doc ///
 		Example
 			P = specificMatroid "pappus"
 			NP = specificMatroid "nonpappus"
-			NP == relaxation(P, set{3,4,5})
+			NP == relaxation(P, set{6,7,8})
 	Caveat
 		Note that relaxation does not change the ground set. Thus e.g.
 		@TO representationOf@ will return the same for both the Fano and
@@ -2286,14 +2385,16 @@ doc ///
 			areIsomorphic(M0, M1)
 		Text
 			
-			Matroid union is an important operation in combinatorial optimization,
-			and via duality, is related to the problem of matroid intersection.
+			Matroid union is an important operation in combinatorial
+			optimization, and via duality, is related to the problem of
+			matroid intersection.
 			
 			With the operation of union, one can work with transversal
-			matroids and gammoids. A matroid is transversal iff it is a union of 
-			rank 1 matroids; strict gammoids are precisely the duals of transversal 
-			matroids, and gammoids are restrictions of strict gammoids. In general 
-			the problem of determining if a given matroid is a gammoid is difficult.
+			matroids and gammoids. A matroid is transversal iff it is a union
+			of rank 1 matroids; strict gammoids are precisely the duals of
+			transversal matroids, and gammoids are restrictions of strict
+			gammoids. In general the problem of determining if a given
+			matroid is a gammoid is difficult.
 			
 			A union of two uniform matroids is again uniform, but a union 
 			of two graphic matroids need not be binary:
@@ -2308,18 +2409,18 @@ doc ///
 		Text
 		
 			One potential caveat: the ground set of M must not have repeated 
-			elements. If this is not the case, the user MUST relabel elements of 
-			M so that they become distinct. Of course, this needs to be done
-			for both M and N, and one should also keep track of which 
-			elements of M and N are meant to be the same after the relabelling 
-			(otherwise the entire point of taking unions, as opposed to direct 
-			sums, is lost).
+			elements. If this is not the case, the user MUST rename
+			elements of M so that they become distinct. Of course, this needs
+			to be done for both M and N, and one should also keep track of
+			which elements of M and N are meant to be the same after the
+			renaming (otherwise the entire point of taking unions, as
+			opposed to direct sums, is lost).
 			
-			In the example below, M contains the vector {1,1} twice. Macaulay2 
-			has no way of distinguishing the repeated vectors, so the second 
-			occurrence of {1,1} is relabelled to the symbol d (of course,
-			if the symbol d also happened to be an element of N, then a different 
-			label would have to be chosen).
+			In the example below, M contains the vector {1,1} twice.
+			Macaulay2 has no way of distinguishing the repeated vectors, so
+			the second occurrence of {1,1} is relabelled to the symbol d (of
+			course, if the symbol d also happened to be an element of N, then
+			a different label would have to be chosen).
 			
 		Example
 			A = matrix{{0,1,1,1},{0,0,1,1}}
@@ -2335,6 +2436,7 @@ doc ///
 			U_*
 	SeeAlso
 		(symbol ++, Matroid, Matroid)
+		relabel
 ///
 
 doc ///
@@ -2465,9 +2567,9 @@ doc ///
 	Description
 		Text
 			A matroid M is called m-connected if M has no k-separations for 
-			k < m (see @TO getSeparation@ for the definition of a k-separation). 
-			Thus a matroid is 3-connected if it has no 2-separations
-			(or 1-separations). 
+			k < m (see @TO getSeparation@ for the definition of a 
+			k-separation). Thus a matroid is 3-connected if it has no 
+			2-separations (or 1-separations). 
 			
 		Example
 			U1 = uniformMatroid(1, 4)
@@ -2496,20 +2598,21 @@ doc ///
 	Description
 		Text
 			For a matroid M on a ground set E, and k >= 1,
-			a (2-)partition (X, E - X) of E(M) is called a k-separation of M if
-			|X| >= k, |E - X| >= k, and rank(X) + rank(E - X) - rank(M) <= k-1.
+			a (2-)partition (X, E - X) of E(M) is called a k-separation of M
+			if |X| >= k, |E - X| >= k, and 
+			rank(X) + rank(E - X) - rank(M) <= k-1.
 			The separation is called minimal if either |X| = k or |E - X| = k.
 			
 			This method computes a k-separation of M, if one exists. 
 			If no k-separation of M exists, then @TO null@ is returned.
 			
-			Efficiency is achieved by using special structure of k-separations:
-			if (X, E - X) is a minimal k-separation (and no m-separation with 
-			m < k exists) with |X| = k, then X is either an independent cocircuit
-			or a coindependent circuit. On the other hand, if (X, E - X) 
-			is a nonminimal separation with |E - X| minimal, then X is both a 
-			flat and a coflat. In particular, if the ranks of all flats have 
-			been previously computed (e.g. via 
+			Efficiency is achieved by using special structure of 
+			k-separations: if (X, E - X) is a minimal k-separation (and no 
+			m-separation with m < k exists) with |X| = k, then X is either an
+			independent cocircuit or a coindependent circuit. On the other
+			hand, if (X, E - X) is a nonminimal separation with |E - X|
+			minimal, then X is both a flat and a coflat. In particular, if
+			the ranks of all flats have been previously computed (e.g. via 
 			@TO2{(fVector, Matroid), "fVector"}@), then this method should
 			finish quickly.
 			
@@ -2560,6 +2663,51 @@ doc ///
 		affineGeometry
 		projectiveGeometry
 		specificMatroid
+///
+
+doc ///
+	Key
+		relabel
+		(relabel, Matroid, HashTable)
+		(relabel, Matroid, List)
+		(relabel, Matroid)
+	Headline
+		relabel a matroid
+	Usage
+		relabel(M, H)
+		relabel(M, L)
+		relabel M
+	Inputs
+		M:Matroid
+		H:HashTable
+		L:List
+	Outputs
+		:Matroid
+			a matroid isomorphic to M
+	Description
+		Text
+			This method yields another matroid isomorphic to the input
+			matroid M with labels specified by a hash table, or list of
+			options. The keys of the hash table should be (a subset of) 
+			$\{0, ..., n-1\}$ where n is the number of elements in the 
+			@TO groundSet@ of M. Since any unused elements are assumed to
+			remain unchanged, the set of values should coincide with the set
+			of keys.
+			
+			Alternatively, the images of $\{0, ..., n-1\}$ (in order) can be
+			specified (as a list, whose elements are not options). If neither
+			a list nor hash table is provided, then a random permutation is
+			chosen.
+			
+		Example
+			Q6 = specificMatroid "Q6"
+			M = relabel_Q6 {3 => 0, 0 => 3}
+			(nonbases Q6, nonbases M)
+			(M == Q6, areIsomorphic(M, Q6))
+			nonbases relabel Q6
+	SeeAlso
+		(isomorphism, Matroid, Matroid)
+		(areIsomorphic, Matroid, Matroid)
 ///
 
 doc ///
@@ -2652,10 +2800,8 @@ doc ///
 			minorM6 = minor(M6, set{8}, set{4,5,6,7})
 			time isomorphism(M5, minorM6)
 			isomorphism(M5, M5)
-			p = {8, 9, 13, 11, 7, 14, 0, 3, 2, 4, 6, 5, 1, 10, 12} -- random permutation of M6.groundSet
-			N = matroid(M6.cache.groundSet, (circuits M6)/(c -> c/(i -> p#i)), EntryMode => "circuits")
-			time phi = isomorphism(M6,N)
-			values phi === p
+			N = relabel M6
+			time phi = isomorphism(N,M6)
 	SeeAlso
 		getIsos
 		quickIsomorphismTest
@@ -2766,12 +2912,11 @@ doc ///
 			of a matroid is: if $M$ is a matroid consisting of $a$ loops 
 			and $b$ coloops, then T_M(x, y) = x^ay^b, and if 
 			$e \in&nbsp;M$ is neither a loop nor a coloop, then 
-			T_M(x, y) := T_{M/e}(x, y) + T_{M&#92;e}(x, y), where 
-			M&#92;e is the @TO deletion@ of M with respect to \{e\},
-			and M/e is the @TO contraction@ of M with respect to 
-			\{e\}. Many invariants of a matroid can be determined by 
-			substituting values into its Tutte polynomial - cf.
-			@TO tutteEvaluate@.
+			T_M(x, y) := T_{M/e}(x, y) + T_{M\e}(x, y), where M\e is the 
+			@TO deletion@ of M with respect to $\{e\}$, and M/e is the 
+			@TO contraction@ of M with respect to $\{e\}$. Many invariants of
+			a matroid can be determined by substituting values into its Tutte
+			polynomial - cf. @TO tutteEvaluate@.
 			
 		Example
 			tuttePolynomial matroid completeGraph 4
@@ -3141,7 +3286,8 @@ doc ///
 			The matroid (basis) polytope of a matroid on n elements lives in 
 			R^n, and is the convex hull of the indicator vectors of the bases.
 			
-			For uniform matroids, the basis polytope is precisely the hypersimplex:
+			For uniform matroids, the basis polytope is precisely the 
+			hypersimplex:
 		
 		Example
 			U24 = uniformMatroid(2, 4)
@@ -3149,8 +3295,8 @@ doc ///
 		Text
 		
 			In order to obtain an actual polytope, one must take the convex
-			hull of the columns of the indicator matrix, which is provided by the
-			Polyhedra package:
+			hull of the columns of the indicator matrix, which is provided by
+			the Polyhedra package:
 			
 		Example
 			needsPackage "Polyhedra"
@@ -3160,8 +3306,8 @@ doc ///
 
 			The Gelfand-Goresky-MacPherson-Serganova 
 			characterizes which polytopes are basis polytopes for a matroid: 
-			namely, each edge is of the form $e_i - e_j$ for some $i, j$, where 
-			$e_i$ are the standard basis vectors.
+			namely, each edge is of the form $e_i - e_j$ for some $i, j$,
+			where $e_i$ are the standard basis vectors.
 			
 		-- Example
 			-- M = matroid({{0,1},{0,2},{0,3},{1,2},{2,3}})
@@ -3227,15 +3373,15 @@ doc ///
 			adding elements of E of maximum weight, which together with 
 			the elements already added, form an independent set.
 
-			In this method, a weight function is specified by its list of values 
-			on E. Thus if $E = \{e_1, ..., e_n\}$, then w is represented as the 
-			list $\{w(e_1), ..., w(e_n)\}$.
+			In this method, a weight function is specified by its list of 
+			values on E. Thus if $E = \{e_1, ..., e_n\}$, then w is
+			represented as the list $\{w(e_1), ..., w(e_n)\}$.
 
-			Matroids can be characterized via the greedy algorithm as follows: 
-			a set $\mathcal{I}$ of subsets of E is the set of independent sets 
-			of a matroid on E iff $\mathcal{I}$ is nonempty, downward closed, 
-			and for every weight function $w : E -> \mathbb{R}$, the greedy 
-			algorithm returns a maximal member of $\mathcal{I}$ of 
+			Matroids can be characterized via the greedy algorithm as follows:
+			a set $\mathcal{I}$ of subsets of E is the set of independent
+			sets of a matroid on E iff $\mathcal{I}$ is nonempty, downward
+			closed, and for every weight function $w : E -> \mathbb{R}$, the
+			greedy algorithm returns a maximal member of $\mathcal{I}$ of 
 			maximum weight.
 			
 		Example
@@ -3313,9 +3459,9 @@ doc ///
 			Huh, the Chow ring of a matroid M is always Gorenstein. 
 			This function computes the cogenerator of the Chow ring of M, 
 			which is also called the volume polynomial of M. Note that 
-			this is a very fine invariant of M - indeed, this single polynomial 
-			can recover the entire Chow ring of M, and thus most of the 
-			lattice of flats of M.
+			this is a very fine invariant of M - indeed, this single 
+			polynomial can recover the entire Chow ring of M, and thus most
+			of the lattice of flats of M.
 			
 		Example
 			M = matroid completeGraph 4
@@ -3372,15 +3518,16 @@ doc ///
 			Notice that elements of $S$ are already rewritten in the 
 			normal form modulo the ideal of the Chow ring. 
 			
-			One can access the flat corresponding to a given variable as follows:
+			One can access the flat corresponding to a given variable as 
+			follows:
 			
 		Example
 			R_7
 			last baseName R_7
 		Text
 		
-			It is also possible to access variables via their flats by creating an 
-			auxiliary @TO HashTable@:
+			It is also possible to access variables via their flats by 
+			creating an auxiliary @TO HashTable@:
 			
 		Example
 			chowVars = hashTable apply(#gens R, i -> last baseName R_i => S_i)
@@ -3407,6 +3554,10 @@ doc ///
 			Returns one of the named matroids below.
 		Code
 			UL {
+				"U24",
+				"C5",
+				"P6",
+				"Q6",
 				"fano",
 				"nonfano",
 				"V8+",
@@ -3414,28 +3565,45 @@ doc ///
 				"pappus",
 				"nonpappus",
 				"AG32",
-				"R10"
+				"R9A",
+				"R9B",
+				"R10",
+				"betsyRoss"
 			}
 		Text
-			Many of these matroids are interesting for their non-representability
-			or duality properties:
+			Many of these matroids are interesting for their 
+			non-representability or duality properties:
 		Code
 			UL {
+				"U24 is the uniform matroid of rank 2 on 4 elements, i.e. the
+				4 point line, and is the unique forbidden minor for 
+				representability over the field of 2 elements",
 				"The Fano matroid F7 is the matroid of the projective plane 
-				over F_2, and is representable only in characteristic 2. The non-Fano
-				matroid is a relaxation of F7, and is representable only in 
-				characteristic not equal to 2.",
-				"The Pappus matroid is an illustration of Pappus' theorem. By the same
-				token, the non-Pappus matroid is a relaxation which is not representable 
-				over any field.",
-				"The Vamos matroid V, which is a relaxation of V8+, is the smallest (size)
-				matroid which is not representable over any field - indeed, it is not 
-				even algebraic. V8+ is identically self-dual, while V is isomorphic to its 
+				over F_2, and is representable only in characteristic 2. 
+				The non-Fano matroid is a relaxation of F7, and is
+				representable only in characteristic not equal to 2.",
+				"The Pappus matroid is an illustration of Pappus' theorem.
+				By the same token, the non-Pappus matroid is a relaxation
+				which is not representable over any field.",
+				"The Vamos matroid V, which is a relaxation of V8+, is the
+				smallest (size) matroid which is not representable over any
+				field - indeed, it is not even algebraic. 
+				V8+ is identically self-dual, while V is isomorphic to its 
 				dual.",
-				"AG32 is the affine geometry corresponding to a 3-dimensional vector
-				space over F_2, and is identically self-dual, with circuits equal
-				to its hyperplanes. A relaxation of AG32 is the smallest matroid not 
-				representable over any field, with fewer basis elements than V."
+				"AG32 is the affine geometry corresponding to a
+				3-dimensional vector space over F_2, and is identically 
+				self-dual, with circuits equal to its hyperplanes. 
+				A relaxation of AG32 is the smallest matroid not 
+				representable over any field, with fewer basis elements 
+				than V.",
+				"R9A and R9B (along with their duals) are the only matroids 
+				on <= 9 elements that are not representable over any field,
+				although their foundations do not have $1$ as a fundamental
+				element.",
+				"R10 is a rank 5 matroid on 10 elements, which is the unique
+				splitter for the class of regular matroids.",
+				"The Betsy Ross matroid is a matroid which is representable
+				over the Golden Mean partial field"
 			}
 		Example
 			F7 = specificMatroid "fano"
@@ -3447,8 +3615,13 @@ doc ///
 			representationOf R10
 			areIsomorphic(R10 \ set{0}, matroid completeMultipartiteGraph {3,3})
 	Caveat
-		Notice that the ground set is a subset of \{0, ..., n-1\} &nbsp; rather than
-		\{1, ..., n\}.
+		Notice that the ground set is a subset of $\{0, ..., n-1\}$ &nbsp;
+		rather than $\{1, ..., n\}$.
+	SeeAlso
+		matroid
+		affineGeometry
+		uniformMatroid
+		allMatroids
 ///
 
 doc ///
@@ -3518,10 +3691,93 @@ doc ///
 			o7 = 70
 ///
 
+doc ///
+	Key
+		allMinors
+		(allMinors, Matroid, Matroid)
+	Headline
+		returns all minors of one matroid in another
+	Usage
+		allMinors(M, N)
+	Inputs
+		M:Matroid
+			the ambient matroid
+		N:Matroid
+			the candidate minor
+	Outputs
+		:List
+			of pairs (S, T), such that M / S \ T is isomorphic to N
+	Description
+		Text
+			This method returns a list of all possible ways to realize N 
+			as a minor of M. The output is a list of pairs (S, T) of subsets 
+			of the ground set of M such that 
+			@TO2{minor, "minor(M, S, T)"}@
+			is isomorphic to N.
+			
+			In fact, S will be an independent subset of M, of size = 
+			rank M - rank N, and T will be a coindependent subset of
+			M, of size = #((M/S).groundSet) - #N.groundSet, which is 
+			disjoint from S.
+			
+			The output of this method should be the empty list iff the 
+			output of @TO hasMinor@ is false (for the same input).
+			
+		Example
+			V = specificMatroid "vamos"
+			U25 = uniformMatroid(2,5)
+			elapsedTime L = allMinors(V, U25);
+			#L
+			netList L_{0..4}
+			all(L, pair -> areIsomorphic(U25, minor(V, pair#0, pair#1)))
+	SeeAlso
+		minor
+		hasMinor
+///
+
+doc ///
+	Key
+		toSageMatroid
+		(toSageMatroid, Matroid)
+		fromSageMatroid
+		(fromSageMatroid, String)
+	Headline
+		Sage format for matroid
+	Usage
+		toSageMatroid M
+	Inputs
+		M:Matroid
+	Outputs
+		:String
+	Description
+		Text
+			This method returns a string which can be recognized as a 
+			matroid in the Sage matroids package. 
+			
+			Currently this function is purely for demonstrative purposes,
+			using lowercase alphabet letters for the ground set (thus limited
+			to matroids on <= 26 elements), and using a basis description.
+			
+			The inverse functionality is provided by the function 
+			fromSageMatroid.
+			
+		Example
+			V = specificMatroid "vamos"
+			s = toSageMatroid V
+			class s
+			fromSageMatroid s === V
+///
+
 undocumented {
 	(net, Matroid),
-	Loops,
-	ParallelEdges
+	-- Loops,
+	-- ParallelEdges,
+	seriesConnection,
+	(seriesConnection, Matroid, Matroid),
+	parallelConnection,
+	(parallelConnection, Matroid, Matroid),
+	sum2,
+	(sum2, Matroid, Matroid)
 }
 
 TEST ///
@@ -3642,6 +3898,7 @@ assert(maxWeightBasis(F7, rsort w) === set{0,1,2})
 ///
 
 TEST ///
+-- no-check-flag #1392
 M0 = matroid graph({{a,b},{b,c},{c,d},{d,e},{e,f},{f,g},{f,h},{c,h},{c,f},{a,g},{d,g}})
 M1 = matroid graph({{a,b},{b,c},{c,d},{d,e},{e,f},{f,g},{f,h},{c,h},{c,f},{a,g},{a,h}})
 T = ZZ[x,y]
@@ -3693,7 +3950,8 @@ G = graph({{0,1},{0,2},{1,2},{2,3},{3,4},{4,5},{4,6},{5,6}}) -- bowtie graph
 M = matroid G
 assert(set coloops M === set {4,3})
 p = {6, 0, 5, 1, 4, 7, 2, 3}
-assert(values isomorphism (M, matroid(M_*, (circuits M)/(c -> c/(i -> p#i)), EntryMode => "circuits")) === p)
+assert(values isomorphism (M, relabel(M, p)) === p)
+-- assert(values isomorphism (M, matroid(M_*, (circuits M)/(c -> c/(i -> p#i)), EntryMode => "circuits")) === p)
 ///
 
 TEST ///
@@ -3725,6 +3983,9 @@ F7 = specificMatroid "fano"
 assert(#select(S8_*, x -> areIsomorphic(S8 / {x}, F7)) == 1)
 assert(#select(S8_*, x -> areIsomorphic(S8 \ {x}, dual F7)) == 1)
 assert(#getIsos(F7, F7) == 168)
+M = relabel(F7, hashTable {3 => 4, 4 => 6, 6 => 3})
+assert(areIsomorphic(F7, M))
+assert(areIsomorphic(F7, relabel F7))
 ///
 
 TEST ///
@@ -3736,6 +3997,25 @@ assert(not any(subsets(smallMatroids, 2), S -> areIsomorphic(S#0, S#1)))
 assert(all(smallMatroids_{1..69}, M -> areIsomorphic(M, fold(components M, (a, b) -> a ++ b))))
 ///
 
+TEST ///
+P = specificMatroid "pappus"
+assert Equation(#nonbases P, 9)
+NP = specificMatroid "nonpappus"
+assert Equation(#nonbases NP, 8)
+U36 = uniformMatroid(3,6)
+U36minors = allMinors(P, U36)
+assert Equation(#U36minors, 3)
+BR = specificMatroid "betsyRoss"
+elapsedTime assert Equation(hasMinor(BR, U36), true)
+///
+
+TEST ///
+V8plus = specificMatroid "V8+"
+s = "Matroid(groundset = 'abcdefgh', bases = ['abce','abde','acde','bcde','abcf','abdf','acdf','bcdf','abef','acef','bdef','cdef','abcg','abdg','acdg','bcdg','abeg','aceg','bceg','adeg','bdeg','cdeg','abfg','acfg','bcfg','adfg','bdfg','cdfg','aefg','befg','cefg','defg','abch','abdh','acdh','bcdh','abeh','aceh','bceh','adeh','bdeh','cdeh','abfh','acfh','bcfh','adfh','bdfh','cdfh','aefh','befh','cefh','defh','abgh','acgh','bdgh','cdgh','aegh','begh','cegh','degh','afgh','bfgh','cfgh','dfgh'])"
+assert (s === toSageMatroid V8plus)
+assert (V8plus == fromSageMatroid s)
+///
+
 end--
 restart
 loadPackage("Matroids", Reload => true)
@@ -3744,3 +4024,6 @@ installPackage "Matroids"
 installPackage("Matroids", RemakeAllDocumentation => true)
 viewHelp "Matroids"
 check "Matroids"
+
+-- custom rank functions
+scan(flats M, F -> M.cache.rankFunction#F = rank (representationOf M)_(toList F))
