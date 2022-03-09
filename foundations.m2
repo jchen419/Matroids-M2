@@ -1060,10 +1060,10 @@ representation (Matroid, PastureMorphism) := Matrix => (M, phi) -> (
 
 representations = method(Options => options morphisms)
 representations (Matroid, GaloisField) := List => opts -> (M, k) -> (
-    reps := apply(morphisms(foundation M, pasture k, opts), representation_M);
-    apply(reps, A -> matrix table(rank M, #M_*, (i,j) -> (
-    -- maps := morphisms(foundation M, pasture k, opts);
-    -- apply(maps/representation_M, A -> matrix table(rank M, #M_*, (i,j) -> (
+    -- reps := apply(morphisms(foundation M, pasture k, opts), representation_M);
+    -- apply(reps, A -> matrix table(rank M, #M_*, (i,j) -> (
+    maps := morphisms(foundation M, pasture k, opts);
+    apply(maps/representation_M, A -> matrix table(rank M, #M_*, (i,j) -> (
         if A#i#j === 0 then 0_k
         else if A#i#j === 1 then 1_k
         else (k.PrimitiveElement)^(if A#i#j == 0 then 0 else (A#i#j)_(0,0))
