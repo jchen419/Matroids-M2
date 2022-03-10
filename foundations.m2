@@ -1083,6 +1083,44 @@ isQuasiFree = M -> (
     all(select(toList(0..<#M_*), e -> isQuasiFixed_M e), e -> not is3Connected cosimpleMatroid (M\{e})) and  all(select(toList(0..<#M_*), e -> isQuasiCofixed_M e), e -> not is3Connected simpleMatroid (M/{e}))
 )
 
+-- Fundamental diagram
+
+fundamentalDiagram = method()
+fundamentalDiagram Matroid := Sequence => M -> (
+    minorList := {uniformMatroid_2 4, uniformMatroid_2 5, specificMatroid "C5"};
+    minorList = minorList | (minorList_{1,2}/dual);
+    U24minors := allMinors(M, minorList#0);
+    otherMinors := apply(toList(1..4), i -> allMinors(M, minorList#i));
+    numMinors := prepend(#U24minors, apply(otherMinors, s -> #s));
+    otherMinors = flatten otherMinors;
+    V := toList(0..<(#U24minors + #otherMinors));
+    E := delete(null, flatten table(#U24minors, #otherMinors, (i, j) -> if isSubset(otherMinors#j#0, U24minors#i#0) and isSubset(otherMinors#j#1, U24minors#i#1) then {i,j+#U24minors}));
+    (numMinors, graph(V, E))
+)
+
+neighbors (Graph, List) := List => (G, L) -> (
+    if not G.cache#?"neighborTable" then G.cache#"neighborTable" = hashTable apply(vertices G, v -> v => toList neighbors(G, v));
+    unique flatten apply(L, v -> G.cache#"neighborTable"#v)
+)
+
+coveringNumber = method()
+coveringNumber (Graph, List) := ZZ => (G, L) -> (
+    r := 0;
+    L0 := unique(L | neighbors(G, L));
+    n := #L;
+    while n < #L0 do ( n = #L0; L0 = unique(L0 | neighbors(G, L0)); r = r+1; );
+    r
+)
+coveringNumber Matroid := ZZ => M -> (
+    (S, G) := fundamentalDiagram M;
+    coveringNumber(G, apply(S#1, i -> i + S#0) | apply(S#3, i -> i + S#0+S#1+S#2))
+)
+
+TEST ///
+M = specificMatroid "Q6"
+assert(coveringNumber M == 3)
+///
+
 -- Special classes of matroids
 
 spike = method()
@@ -1140,6 +1178,7 @@ BRplus = BR | transpose matrix{{1,0,1}} -- foundation is F4
 GF 4; D = matrix{{1,0,0,1,a,1,0,a+1,1},{0,1,0,a,a,1,a,1,a+1},{0,0,1,0,1,1,1,1,1}}
 GF 4; D = matrix{{1,0,0,1,a+1,1,0,a,1},{0,1,0,a+1,a+1,1,a+1,1,a},{0,0,1,0,1,1,1,1,1}}
 M = matroid (matrix{{7:1}} || transpose matrix {{-3,0}, {-3/4,-1}, {3/2,-2}, {-3/4,1}, {3/2,2}, {0,0}, {3,0}}) -- Example 2.2 in paper
+GF 4; M = matroid matrix{{1,1,0,0,a+1,0,0,1,1},{0,0,1,0,a,0,a+1,a,1},{1,0,0,1,1,0,a,a+1,1},{a,0,0,0,0,1,1,1,1}} -- morphisms(foundation M, pasture GF 4)
 
 -- a class of non-orientable matroids (Bland--Las-Vergnas, Orientability of Matroids, Ex. 3.11)
 r = 6
@@ -1283,6 +1322,7 @@ set includedIndices
 -- determining if a pasture is a tensor product of specified pastures
 -- compute symmetry quotients?
 -- Handle quotient by full rank sublattice correctly
+-- Bug in morphisms: first hexagon of type 4
 
 restart
 load "foundations.m2"
