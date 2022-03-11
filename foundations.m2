@@ -1095,25 +1095,20 @@ fundamentalDiagram Matroid := Sequence => M -> (
     otherMinors = flatten otherMinors;
     V := toList(0..<(#U24minors + #otherMinors));
     E := delete(null, flatten table(#U24minors, #otherMinors, (i, j) -> if isSubset(otherMinors#j#0, U24minors#i#0) and isSubset(otherMinors#j#1, U24minors#i#1) then {i,j+#U24minors}));
-    (numMinors, graph(V, E))
+    (numMinors, V, E)
 )
 
-neighbors (Graph, List) := List => (G, L) -> (
-    if not G.cache#?"neighborTable" then G.cache#"neighborTable" = hashTable apply(vertices G, v -> v => toList neighbors(G, v));
-    unique flatten apply(L, v -> G.cache#"neighborTable"#v)
-)
+HashTable _ List := (H, L) -> flatten apply(L, v -> H#v)
 
 coveringNumber = method()
-coveringNumber (Graph, List) := ZZ => (G, L) -> (
-    r := 0;
-    L0 := unique(L | neighbors(G, L));
-    n := #L;
-    while n < #L0 do ( n = #L0; L0 = unique(L0 | neighbors(G, L0)); r = r+1; );
-    r
-)
 coveringNumber Matroid := ZZ => M -> (
-    (S, G) := fundamentalDiagram M;
-    coveringNumber(G, apply(S#1, i -> i + S#0) | apply(S#3, i -> i + S#0+S#1+S#2))
+    (S, V, E) := fundamentalDiagram M;
+    H := hashTable((a,b) -> flatten {a,b}, E | E/reverse);
+    L := apply(S#1, i -> i + S#0) | apply(S#3, i -> i + S#0+S#1+S#2);
+    (n, r) := (#L, 0);
+    L0 := unique(L | H_L);
+    while n < #L0 do ( (n, r) = (#L0, r+1); L0 = unique(L0 | H_L0); );
+    r
 )
 
 TEST ///
