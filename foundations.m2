@@ -472,114 +472,114 @@ freePartPasture Pasture := List => P -> (
     positions(toList(0..<numrows A), i -> A^{i} == 0)
 )
 
--- changeBase = (b, n) -> (
-    -- if n < b then return {(0, n)};
-    -- k := floor(log_b n);
-    -- a := floor(n/b^k);
-    -- {(k, a)} | changeBase(b, n - a*b^k)
--- )
+changeBase = (b, n) -> (
+    if n < b then return {(0, n)};
+    k := floor(log_b n);
+    a := floor(n/b^k);
+    {(k, a)} | changeBase(b, n - a*b^k)
+)
 
--- fullRankSublattice1 = method(Options => {Order => 2, Shuffle => false})
--- fullRankSublattice1 Pasture := List => opts -> P -> (
-    -- if P.cache#?"sublattice1" then P.cache#"sublattice1" else P.cache#"sublattice1" = (
-        -- rowIndices := freePartPasture P;
-        -- perm := if opts.Shuffle then random else reverse;
-        -- projections := perm apply(P.hexagons/first, pair -> {pair#0^rowIndices, pair#1^rowIndices}); -- first two pairs seem not in general position..
-        -- r := #rowIndices;
-        -- s := rank (matrix{flatten flatten P.hexagons})^rowIndices;
-        -- L := ZZ^r;
-        -- goodPairs := {};
-        -- for pair in projections do (
-            -- Q := L/image matrix{pair};
-            -- if rank Q == rank L - 2 then ( L = Q; goodPairs = append(goodPairs, pair); );
-            -- if rank L <= r - s + 1 then break;
-        -- );
-        -- if debugLevel > 5 then print(rank L, goodPairs); 
-        -- if rank L == r - s then return {goodPairs, {}};
-        -- if rank L > r - s + 2 then error "Could not find enough good fundamental pairs. Try again with `Shuffle => true'"; -- need rank L <= 2.
-        -- goodMatrix := matrix {flatten goodPairs};
-        -- allExtraCols := flatten for S in subsets(projections - set goodPairs, rank L) list (
-            -- E := matrix {flatten S};
-            -- Q := L/image E;
-            -- extraCols := {};
-            -- if rank Q == r - s then (
-                -- extraCols = for t in subsets(numcols E, rank L) list (
-                    -- D := det(goodMatrix | E_t);
-                    -- if abs D == 1 then break {(apply(t, i -> E_{i}), D)};
-                    -- (apply(t, i -> E_{i}), D)
-                -- );
-            -- );
-            -- extraCols
-        -- );
-        -- minPair := (-1, infinity);
-        -- for p in allExtraCols do (
-            -- if gcd(p#1, opts.Order) == 1 then (minPair = p; break);
-            -- if p#1 < minPair#1 then minPair = p;
-        -- );
-        -- {goodPairs, minPair#0}
-    -- )
--- )
+fullRankSublattice1 = method(Options => {Order => 2, Shuffle => false})
+fullRankSublattice1 Pasture := List => opts -> P -> (
+    if P.cache#?"sublattice1" then P.cache#"sublattice1" else P.cache#"sublattice1" = (
+        rowIndices := freePartPasture P;
+        perm := if opts.Shuffle then random else reverse;
+        projections := perm apply(P.hexagons/first, pair -> {pair#0^rowIndices, pair#1^rowIndices}); -- first two pairs seem not in general position..
+        r := #rowIndices;
+        s := rank (matrix{flatten flatten P.hexagons})^rowIndices;
+        L := ZZ^r;
+        goodPairs := {};
+        for pair in projections do (
+            Q := L/image matrix{pair};
+            if rank Q == rank L - 2 then ( L = Q; goodPairs = append(goodPairs, pair); );
+            if rank L <= r - s + 1 then break;
+        );
+        if debugLevel > 5 then print(rank L, goodPairs); 
+        if rank L == r - s then return {goodPairs, {}};
+        if rank L > r - s + 2 then error "Could not find enough good fundamental pairs. Try again with `Shuffle => true'"; -- need rank L <= 2.
+        goodMatrix := matrix {flatten goodPairs};
+        allExtraCols := flatten for S in subsets(projections - set goodPairs, rank L) list (
+            E := matrix {flatten S};
+            Q := L/image E;
+            extraCols := {};
+            if rank Q == r - s then (
+                extraCols = for t in subsets(numcols E, rank L) list (
+                    D := det(goodMatrix | E_t);
+                    if abs D == 1 then break {(apply(t, i -> E_{i}), D)};
+                    (apply(t, i -> E_{i}), D)
+                );
+            );
+            extraCols
+        );
+        minPair := (-1, infinity);
+        for p in allExtraCols do (
+            if gcd(p#1, opts.Order) == 1 then (minPair = p; break);
+            if p#1 < minPair#1 then minPair = p;
+        );
+        {goodPairs, minPair#0}
+    )
+)
 
--- morphisms1 = method(Options => {FindOne => false})
--- morphisms1 (Pasture, Pasture) := List => opts -> (P, P') -> (
-    -- Pstar := presentation P.multiplicativeGroup;
-    -- P'star := presentation P'.multiplicativeGroup;
-    -- freePart := freePartPasture P;
-    -- freePart' := freePartPasture P';
-    -- torsPart := toList(0..<numrows Pstar) - set freePart;
-    -- torsPart' := toList(0..<numrows P'star) - set freePart';
-    -- fundPairsP := flatten P.hexagons;
-    -- fundEltsP := unique flatten fundPairsP;
-    -- fundPairsP' := flatten P'.hexagons;
-    -- fundEltsP' := unique flatten fundPairsP';
-    -- T := coker(Pstar^torsPart);
-    -- T' := coker(P'star^torsPart');
-    -- eta := map(ZZ^(numgens T'), ZZ^(#freePart), 0);
-    -- eta' := map(ZZ^(#freePart'), ZZ^1, 0);
-    -- H := select(abelianGroupHom(T, T'), f -> ((((f | eta) * P.epsilon) || eta') - P'.epsilon) % P'star == 0);
-    -- if debugLevel > 0 then print ("number of possible phi is: " | net(#H));
-    -- G := fullRankSublattice1(P);
-    -- latticeGens1 := apply(G#0, p -> fundPairsP_(position(fundPairsP, q -> {q#0^freePart, q#1^freePart} == p)));
-    -- latticeGens2 := apply(G#1, g -> fundEltsP_(position(fundEltsP, q -> q^freePart == g)));
-    -- otherHexes := select(P.hexagons, hex -> (all(latticeGens1, p -> not compareHex(p/(e -> e % Pstar), hex))));
-    -- otherPairs := otherHexes/first;
-    -- if debugLevel > 0 then print ("number of other pairs is: " | net (#otherPairs));
-    -- A := matrix {(flatten latticeGens1) | latticeGens2};
-    -- B := inverse sub(A^freePart, QQ); -- inverse sub(matrix {(flatten G#0) | G#1}, QQ);
-    -- FmodG := minPres coker(A^freePart);
-    -- if debugLevel > 0 then print ("Quotient lattice is: "| net FmodG);
-    -- K := apply(abelianGroupHom(FmodG, T'), f -> f * transpose matrix(FmodG.cache.pruningMap));
-    -- g := #G#0 + #G#1;
-    -- if debugLevel > 0 then print ("Trying " | net(#H * (#fundEltsP')^g) | " candidate morphisms ...");
-    -- unique flatten for phi in H list (
-        -- phi' := phi || map(ZZ^(#freePart'), ZZ^(#torsPart), 0);
-        -- D := phi' * A^torsPart;
-        -- N := (#fundEltsP')^g - 1;
-        -- flatten while N >= 0 list (		        
-            -- s := hashTable changeBase(#fundEltsP', N);
-            -- s = apply(g, i -> if s#?(g - 1 - i) then s#(g - 1 - i) else 0);
-            -- N = N - 1;
-            -- candidates := apply(#G#0, i -> (
-                -- e := fundEltsP'#(s#i);
-                -- apply(select(fundPairsP', p -> member(e,p)), p -> matrix{if e == p#1 then reverse p else p})
-            -- )) | apply(#G#1, i -> {fundEltsP'#(s#(#G#0+i))});
-            -- candidates = unique if #candidates == 0 then {map(ZZ^(numrows P'star), ZZ^0, 0)} else fold(candidates, (a, b) -> flatten table(a, b, (i, j) -> i|j));
-            -- if debugLevel > 1 and #candidates > 1 then print ("Testing " | net(#K*#candidates) | " sub-candidates ...");
-            -- flatten for C in candidates list (
-                -- E := (C - D) * B;
-                -- torsE := subTorsion(E^torsPart', T');
-                -- if torsE === false then continue;
-                -- freeE := try sub(E^freePart', ZZ);
-                -- if freeE === null then continue;
-                -- for psi in K list ( 
-                    -- M := phi' | ((torsE + psi) || freeE);
-                    -- if not all(otherPairs, p -> any(P'.hexagons, h -> compareHex({M*p#0 % P'star, M*p#1 % P'star}, h))) then continue;
-                    -- if opts.FindOne then return M else M 
-                -- )
-            -- )
-        -- )
-    -- )
--- )
+morphisms1 = method(Options => {FindOne => false})
+morphisms1 (Pasture, Pasture) := List => opts -> (P, P') -> (
+    Pstar := presentation P.multiplicativeGroup;
+    P'star := presentation P'.multiplicativeGroup;
+    freePart := freePartPasture P;
+    freePart' := freePartPasture P';
+    torsPart := toList(0..<numrows Pstar) - set freePart;
+    torsPart' := toList(0..<numrows P'star) - set freePart';
+    fundPairsP := flatten P.hexagons;
+    fundEltsP := unique flatten fundPairsP;
+    fundPairsP' := flatten P'.hexagons;
+    fundEltsP' := unique flatten fundPairsP';
+    T := coker(Pstar^torsPart);
+    T' := coker(P'star^torsPart');
+    eta := map(ZZ^(numgens T'), ZZ^(#freePart), 0);
+    eta' := map(ZZ^(#freePart'), ZZ^1, 0);
+    H := select(abelianGroupHom(T, T'), f -> ((((f | eta) * P.epsilon) || eta') - P'.epsilon) % P'star == 0);
+    if debugLevel > 0 then print ("number of possible phi is: " | net(#H));
+    G := fullRankSublattice1(P);
+    latticeGens1 := apply(G#0, p -> fundPairsP_(position(fundPairsP, q -> {q#0^freePart, q#1^freePart} == p)));
+    latticeGens2 := apply(G#1, g -> fundEltsP_(position(fundEltsP, q -> q^freePart == g)));
+    otherHexes := select(P.hexagons, hex -> (all(latticeGens1, p -> not compareHex(p/(e -> e % Pstar), hex))));
+    otherPairs := otherHexes/first;
+    if debugLevel > 0 then print ("number of other pairs is: " | net (#otherPairs));
+    A := matrix {(flatten latticeGens1) | latticeGens2};
+    B := inverse sub(A^freePart, QQ); -- inverse sub(matrix {(flatten G#0) | G#1}, QQ);
+    FmodG := minPres coker(A^freePart);
+    if debugLevel > 0 then print ("Quotient lattice is: "| net FmodG);
+    K := apply(abelianGroupHom(FmodG, T'), f -> f * transpose matrix(FmodG.cache.pruningMap));
+    g := #G#0 + #G#1;
+    if debugLevel > 0 then print ("Trying " | net(#H * (#fundEltsP')^g) | " candidate morphisms ...");
+    unique flatten for phi in H list (
+        phi' := phi || map(ZZ^(#freePart'), ZZ^(#torsPart), 0);
+        D := phi' * A^torsPart;
+        N := (#fundEltsP')^g - 1;
+        flatten while N >= 0 list (		        
+            s := hashTable changeBase(#fundEltsP', N);
+            s = apply(g, i -> if s#?(g - 1 - i) then s#(g - 1 - i) else 0);
+            N = N - 1;
+            candidates := apply(#G#0, i -> (
+                e := fundEltsP'#(s#i);
+                apply(select(fundPairsP', p -> member(e,p)), p -> matrix{if e == p#1 then reverse p else p})
+            )) | apply(#G#1, i -> {fundEltsP'#(s#(#G#0+i))});
+            candidates = unique if #candidates == 0 then {map(ZZ^(numrows P'star), ZZ^0, 0)} else fold(candidates, (a, b) -> flatten table(a, b, (i, j) -> i|j));
+            if debugLevel > 1 and #candidates > 1 then print ("Testing " | net(#K*#candidates) | " sub-candidates ...");
+            flatten for C in candidates list (
+                E := (C - D) * B;
+                torsE := subTorsion(E^torsPart', T');
+                if torsE === false then continue;
+                freeE := try sub(E^freePart', ZZ);
+                if freeE === null then continue;
+                for psi in K list ( 
+                    M := phi' | ((torsE + psi) || freeE);
+                    if not all(otherPairs, p -> any(P'.hexagons, h -> compareHex({M*p#0 % P'star, M*p#1 % P'star}, h))) then continue;
+                    if opts.FindOne then return M else M 
+                )
+            )
+        )
+    )
+)
 
 subTorsion = method()
 subTorsion (Matrix, Module) := Matrix => (X, G) -> ( 
@@ -677,7 +677,7 @@ fullRankSublattice Pasture := List => P -> (
         L := if g == 0 then map(ZZ^n, ZZ^0, 0) else matrix{flatten for i to #G-1 list if G#i#0#2 == 1 + G#i#0#1 then G#i#1 else G#i#1#1};
         k := 0;
         z := map(ZZ^(#torsPart), ZZ^1, 0);
-        checkPairs := {};
+        torsPairs := {};
         generatingRules := flatten for i to #G-1 list (
             if G#i#0#2 == 1 + G#i#0#1 then ( -- type 3 pair
                 k = k+1;
@@ -691,7 +691,7 @@ fullRankSublattice Pasture := List => P -> (
                     L = submatrix(L, , toList(0..<i+k)) | G#i#1#0 | submatrix(L, , toList(i+k+1..<g));
                     coeff = coeff^{0..<i+k-1,i+k+1,i+k};
                 );
-                if abs((flatten entries coeff)#(if isType2Pair then -2 else -1)) != 1 then checkPairs = append(checkPairs, G#i#1);
+                if abs((flatten entries coeff)#(if isType2Pair then -2 else -1)) != 1 then torsPairs = append(torsPairs, G#i#1);
                 {{(L_(toList(0..<i+k)) | B)^torsPart*coeff, coeff}}
             )
         );
@@ -703,10 +703,10 @@ fullRankSublattice Pasture := List => P -> (
             coeffs := lift(c*(transpose matrix{C}), ZZ);
             (B*coeffs - c*e, coeffs, c)
         ))));
-        checkPairs = checkPairs | delete(null, flatten apply(#S, i -> apply(#(S#i), j -> if any(type4Data#i#j, t -> abs last t != 1) then S#i#j#0)));
+        torsPairs = torsPairs | delete(null, flatten apply(#S, i -> apply(#(S#i), j -> if any(type4Data#i#j, t -> abs last t != 1) then S#i#j#0)));
         P.cache#"latticeGensMatrix" = L;
         P.cache#"generatingRules" = generatingRules;
-        P.cache#"checkPairs" = checkPairs;
+        P.cache#"torsPairs" = torsPairs;
         P.cache#"type4Data" = type4Data;
         P.cache#"quotientLattice" = minPres coker(L^freePart);
         G
@@ -741,7 +741,7 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     A := P1.cache#"latticeGensMatrix";
     generatingRules := P1.cache#"generatingRules";
     torsLatticeGens := generatingRules/first;
-    checkPairs := P1.cache#"checkPairs";
+    torsPairs := P1.cache#"torsPairs";
     type4Data := P1.cache#"type4Data";
     B := inverse sub(A^freePart1, QQ);
     
@@ -756,13 +756,14 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     K := apply(abelianGroupHom(Q, T2), f -> f * transpose matrix(Q.cache.pruningMap));
     T0P2 := if T2 == 0 then map(ZZ^(numrows K#0), ZZ^(numcols K#0), 0) else null;
     if debugLevel > 0 then print("(#phi, #psi): " | net(#H, #K));
+    if debugLevel > 0 then print ("Quotient lattice is: "| net Q);
     z0 := map(ZZ^n2, ZZ^0, 0);
     
     -- Main loop
     pastureMorphism(P1, P2, unique flatten for phi in H list (
         D := phi * A^torsPart1;
-        checkType4 = apply(#type4Data, i -> apply(type4Data#i, t -> {phi*t#0#0^torsPart1, phi*t#1#0^torsPart1}));
-        if not all(checkType4#0, p -> any(fundPairsP2, pair -> set pair === set{p#0 % P2star, p#1 % P2star})) then continue;
+        torsType4 = apply(#type4Data, i -> apply(type4Data#i, t -> {phi*t#0#0^torsPart1, phi*t#1#0^torsPart1}));
+        if not all(torsType4#0, p -> any(fundPairsP2, pair -> set pair === set{p#0 % P2star, p#1 % P2star})) then continue;
         delta := apply(r1, i -> phi * torsLatticeGens#i);
         C0 := z0;
         level := 0; -- level should always be the level of current node (previously: == numcols C0)
@@ -790,17 +791,19 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                 if opts.FindIso then (
                     newCandidates = select(newCandidates, c -> rank(C0 | c) == 1 + numcols C0);
                 );
+                -- if debugLevel > 0 then << "candidates before type 4 checks: " << newCandidates << endl;
                 newCandidates = select(newCandidates, c -> (
                     all(#type4Data#(level+1), i -> (
                         data := type4Data#(level+1)#i;
-                        checkPair := checkType4#(level+1)#i;
-                        v := set apply(2, j -> (checkPair#j + (C0 | c)*data#j#1) % P2star);
+                        torsPair := torsType4#(level+1)#i;
+                        v := set apply(2, j -> ((C0 | c)*data#j#1 - torsPair#j) % P2star);
                         any(fundPairsP2, p -> set{p#0*data#0#2 % P2star, p#1*data#0#2 % P2star} === v)
                     ))
                 ));
                 level = level + 1;
                 candidates#level = newCandidates;
                 if debugLevel > 0 then << "\rSearch tree: " << toString apply(#candidates, i -> #candidates#i) << flush;
+                -- if debugLevel > 0 then << "Search tree @ level " << level << ": " << toString apply(#candidates, i -> #candidates#i) << endl;
                 continue;
             ) else flatten while #(candidates#r1) > 0 list ( -- level == r1
                 C := C0 | candidates#r1#0;
@@ -813,8 +816,8 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                 for psi in K list (
                     M := phi | ((torsE + psi) || freeE);
                     if opts.FindIso and abs det M != 1 then continue;
-                    -- if not all(checkPairs, p -> any(P2.hexagons, h -> compareHex({M*p#0 % P2star, M*p#1 % P2star}, h))) then continue;
-                    if not all(checkPairs, p -> member(set {M*p#0 % P2star, M*p#1 % P2star}, fundPairsP2set)) then continue;
+                    -- if not all(torsPairs, p -> any(P2.hexagons, h -> compareHex({M*p#0 % P2star, M*p#1 % P2star}, h))) then continue;
+                    if not all(torsPairs, p -> member(set {M*p#0 % P2star, M*p#1 % P2star}, fundPairsP2set)) then continue;
                     if opts.FindOne or opts.FindIso then return {pastureMorphism(P1, P2, M)} else M
                 )
             )
@@ -1088,9 +1091,9 @@ isQuasiFree = M -> (
 fundamentalDiagram = method()
 fundamentalDiagram Matroid := Sequence => M -> (
     minorList := {uniformMatroid_2 4, uniformMatroid_2 5, specificMatroid "C5"};
-    minorList = minorList | (minorList_{1,2}/dual);
+    minorList = minorList | (minorList_{1,2}/dual) | {uniformMatroid_2 4 ++ uniformMatroid_1 2};
     U24minors := allMinors(M, minorList#0);
-    otherMinors := apply(toList(1..4), i -> allMinors(M, minorList#i));
+    otherMinors := apply(toList(1..5), i -> allMinors(M, minorList#i));
     numMinors := prepend(#U24minors, apply(otherMinors, s -> #s));
     otherMinors = flatten otherMinors;
     V := toList(0..<(#U24minors + #otherMinors));
@@ -1312,7 +1315,7 @@ set includedIndices
 ))
 
 -- TODO:
--- Q: when checking checkPairs, enough to consider torsion?
+-- Q: when checking torsPairs, enough to consider torsion?
 -- compute limits/colimits of pastures
 -- determining if a pasture is a tensor product of specified pastures
 -- compute symmetry quotients?
