@@ -34,12 +34,7 @@ pastureMorphism (Pasture, Pasture, Matrix) := PastureMorphism => (P1, P2, m) -> 
 )
 pastureMorphism (Pasture, Pasture, List) := List => (P1, P2, L) -> apply(L, m -> pastureMorphism(P1, P2, m))
 
-PastureMorphism * PastureMorphism := (phi1, phi2) -> pastureMorphism(phi2.source, phi1.target, phi1.map * phi2.map)
-
-isWellDefined PastureMorphism := Boolean => phi -> (
-    -- TODO
-    return true;
-)
+PastureMorphism * PastureMorphism := (phi1, phi2) -> if phi2.target == phi1.source then pastureMorphism(phi2.source, phi1.target, phi1.map * phi2.map) else error "Expected phi1.source to equal phi2.target"
 
 -- Pasture constructions
 
@@ -66,12 +61,14 @@ pasture GaloisField := Pasture => k -> (
     x := k.PrimitiveElement;
     eps := if even q then 0 else n//2;
     exps := toList(1..<n);
+    multToAdd := hashTable apply(exps, e -> x^e => e);
     hexes := while #exps > 0 list (
-	a := exps#0;
-	b := for j in exps do if x^a + x^j - 1 == 0 then break j;
-        h := {{a, b}, {(-a) % n, (eps - a + b) % n}, {(-b) % n, (eps - b + a) % n}};
-	exps = exps - set flatten h;
-	h/(p -> p/(e -> matrix{{e}} % g))
+        a := exps#0;
+        -- b := for j in exps do if x^a + x^j - 1 == 0 then break j;
+        b := multToAdd#(1 - x^a);
+        h := {{a,b}, {(-a)%n,(eps-a+b)%n}, {(-b)%n,(eps-b+a)%n}};
+        exps = exps - set flatten h;
+        h/(p -> p/(e -> matrix{{e}} % g))
     );
     pasture(g, matrix{{eps}}, hexes)
 )
@@ -280,9 +277,6 @@ h3 := (i, m) -> m_(delete(i-1,#m))
 chooseHyp := (L,f,g) -> L#(position(L,h -> isSubset (f+g,h)))
 containmentTable := (LF,LH) -> hashTable apply(LH, h -> set select(LF, f -> isSubset (f,h)) => h)
 
--- genHex = method()
--- genHex (Matrix, Matrix, List) := List => (A, eps, p) -> {{p#0 % A, p#1 % A}, {(-p#1) % A, (eps + p#0 - p#1) % A}, {(-p#0) % A, (eps - p#0 + p#1) % A}}
-
 hexesFromPairs = method()
 hexesFromPairs (Matrix, Matrix, List) := List => (A, eps, L) -> (
     hexList := {};
@@ -318,11 +312,12 @@ assert(#kruskalSpanningForest G == #vertices G - 1)
 assert(#edges spanningForest G == #vertices G - 2)
 ///
 
-foundation = method(Options => {Strategy => "Bases", HasF7Minor => null, HasF7dualMinor => null})
+foundation = method(Options => {Strategy => null, HasF7Minor => null, HasF7dualMinor => null})
 foundation Matroid := Foundation => opts -> M -> (
-    if M.cache#?"foundation" then M.cache#"foundation" else M.cache#"foundation" = (
+    if M.cache#?"foundation" and (opts.Strategy === null or M.cache#"foundation".cache#"strategy" === opts.Strategy) then M.cache#"foundation" else M.cache#"foundation" = (
     r := rank M;
-    if opts.Strategy === "Hyperplanes" then (
+    strat := if opts.Strategy === null then "bases" else opts.Strategy;
+    if strat === "hyperplanes" then (
         hypMap := hashTable apply(#hyperplanes M, i -> (hyperplanes M)#i => i);
         if debugLevel > 5 then print("hypMap: " | net hypMap);
         indexOfHyp := h -> hypMap#h;
@@ -429,26 +424,26 @@ foundation Matroid := Foundation => opts -> M -> (
         (g, ch) = myMinPres (2*eps | trivialCrossRatios | imDegMap);
         eps = ch_{0} % g;
         if debugLevel > 0 then << "Finding all U24 minors..." << endl;
-        E := toList M.groundSet;
-        U := uniformMatroid(2,4);
         dbgLevelStore = debugLevel;
         debugLevel = 0;
+        E := toList M.groundSet;
+        U := uniformMatroid(2,4);
         U24minors = apply(allMinors(M, U), p -> {p#0, E - p#0 - p#1});
-        debugLevel = dbgLevelStore;
         u = #U24minors;
-        if debugLevel > 0 then << u << " U24 minors found. Generating hexagons..." << endl;
+        if dbgLevelStore > 0 then << u << " U24 minors found. Generating hexagons..." << endl;
         hexes = hexesFromPairs(g, eps, apply(U24minors, p -> (
             l := {set{p#1#0, p#1#1}, set{p#1#2, p#1#3}, set{p#1#0, p#1#2}, set{p#1#1, p#1#3}, set{p#1#0, p#1#3}, set{p#1#1, p#1#2}};
             l = apply(l, q -> ch_(basesMap#(p#0 + q)));
             {l#0 + l#1 - l#2 - l#3, l#4 + l#5 - l#2 - l#3}/matrix
         )));
         genTable = basesMap;
+        debugLevel = dbgLevelStore;
     );
     new Foundation from {
         symbol multiplicativeGroup => coker g,
         symbol epsilon => eps,
         symbol hexagons => hexes,
-        cache => new CacheTable from {"pruningMap" => ch, "genTable" => genTable, "numU24minors" => u, "strategy" => opts.Strategy}
+        cache => new CacheTable from {"pruningMap" => ch, "genTable" => genTable, "numU24minors" => u, "strategy" => strat}
     }
     )
 )
@@ -791,7 +786,7 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                 if opts.FindIso then (
                     newCandidates = select(newCandidates, c -> rank(C0 | c) == 1 + numcols C0);
                 );
-                -- if debugLevel > 0 then << "candidates before type 4 checks: " << newCandidates << endl;
+                if debugLevel > 1 then << endl << "New candidates @ level " << level << ": " << newCandidates << endl;
                 newCandidates = select(newCandidates, c -> (
                     all(#type4Data#(level+1), i -> (
                         data := type4Data#(level+1)#i;
@@ -803,7 +798,6 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                 level = level + 1;
                 candidates#level = newCandidates;
                 if debugLevel > 0 then << "\rSearch tree: " << toString apply(#candidates, i -> #candidates#i) << flush;
-                -- if debugLevel > 0 then << "Search tree @ level " << level << ": " << toString apply(#candidates, i -> #candidates#i) << endl;
                 continue;
             ) else flatten while #(candidates#r1) > 0 list ( -- level == r1
                 C := C0 | candidates#r1#0;
@@ -858,7 +852,7 @@ TEST /// -- Non-Fano
 NF = specificMatroid "nonfano"
 D = foundation NF
 assert(hexTypes D === hashTable {"H"=>0,"D"=>1,"F3"=>0,"U"=>0})
-D2 = foundation(NF ++ NF, Strategy => "Hyperplanes")
+D2 = foundation(NF ++ NF, Strategy => "hyperplanes")
 assert(hexTypes D2 === hashTable {"H"=>0,"D"=>2,"F3"=>0,"U"=>0})
 S = specificPasture "sign"
 assert Equation(1, #morphisms(D, S))
@@ -896,6 +890,14 @@ assert Equation(2, #morphisms(G, pasture GF 4))
 assert Equation(1, #morphisms(G, pasture GF 5))
 ///
 
+TEST /// -- Betsy-Ross+
+k = GF 4
+BR = matrix {{1,0,0,1,1,1,1,1,1,1,1},{0,1,0,a,1,a+1,1,0,a+1,a+1,1},{0,0,1,a,a+1,1,0,a+1,a+1,a,a}} -- representation of Betsy-Ross
+BRplus = matroid(BR | matrix{{1},{0},{1}})
+F = foundation(BRplus, Strategy => "hyperplanes", HasF7Minor => false, HasF7dualMinor => false)
+assert(F == pasture k)
+///
+
 TEST /// -- Isomorphism check
 M = specificMatroid "nonpappus"
 nP = foundation M
@@ -920,7 +922,15 @@ P = foundation specificMatroid "pappus"
 assert Equation(18, #morphisms(P, I))
 ///
 
---Natural map from the foundation of minor
+TEST /// -- Fix for sign of torsion parts of type 4 pairs: cf. https://github.com/jchen419/Matroids-M2/commit/5565f171778ea229b9129db9bdfa7ca8ea3a50bd
+k = GF 4
+M = matroid matrix{{1,1,0,0,a+1,0,0,1,1},{0,0,1,0,a,0,a+1,a,1},{1,0,0,1,1,0,a,a+1,1},{a,0,0,0,0,1,1,1,1}}
+assert hasMinor(M, specificMatroid "V8+")
+assert Equation(2, #morphisms(foundation M, pasture k))
+///
+
+-- Natural map from the foundation of minor
+
 hyperplaneCorrespondenceTable = method()
 hyperplaneCorrespondenceTable (Matroid, ZZ, String) := HashTable => (M, e, mode) -> (
     N := if mode === "delete" then M \ set{e} else M / set{e};
@@ -931,14 +941,15 @@ hyperplaneCorrespondenceTable (Matroid, ZZ, String) := HashTable => (M, e, mode)
 inducedMapFromMinor = method()
 inducedMapFromMinor (Matroid, ZZ, String) := PastureMorphism => (M, e, mode) -> (
     N := if mode === "delete" then M \ set{e} else M / set{e};
-    F := foundation M;
-    G := foundation N;
+    F := foundation(M, Strategy => "hyperplanes");
+    G := foundation(N, Strategy => "hyperplanes");
+    (Fstar, Gstar) := (F.multiplicativeGroup, G.multiplicativeGroup);
     H := hyperplaneCorrespondenceTable(M, e, mode);	
-    if numgens F.multiplicativeGroup == 0 then pastureMorphism(G, F, map(F.multiplicativeGroup, G.multiplicativeGroup, 0)) else (
+    if numgens Fstar == 0 then pastureMorphism(G, F, map(Fstar, Gstar, 0)) else (
     	inducedMinors := apply(sort(pairs G.cache#"genTable" /toList, last)/first/toList, U -> 1 + (F.cache#"genTable")#(set apply(U, h -> H#h)));
-    	B := id_(ZZ^(numgens F.multiplicativeGroup))_{0};
+    	B := id_(ZZ^(numgens Fstar))_{0};
     	B = B | (F.cache#"pruningMap")_(inducedMinors | apply(inducedMinors, i -> i + F.cache#"numU24minors"));
-    	C := id_(ZZ^(numgens G.multiplicativeGroup)) // (G.cache#"pruningMap");
+    	C := id_(ZZ^(numgens Gstar)) // (G.cache#"pruningMap");
     	pastureMorphism(G, F, B*C)
     )
 )
@@ -965,8 +976,9 @@ isPositivelyOrientable Matroid := Boolean => M -> (
 
 representation = method()
 representation (Matroid, PastureMorphism) := Matrix => (M, phi) -> (
-    F := foundation M;
+    F := foundation(M, Strategy => "bases");
     if source phi =!= F then error "Expected source of phi to equal the foundation of M";
+    -- if not F.cache#"strategy" === "bases" then error "Expected presentation of the foundation of M using bases. Please recompute using Strategy => \"bases\"";
     B := sort toList first bases M;
     (ch, basesMap) := (F.cache#"pruningMap", F.cache#"genTable");
     table(rank M, #M_*, (i,j) -> (
@@ -1063,9 +1075,7 @@ representation (Matroid, PastureMorphism) := Matrix => (M, phi) -> (
 
 representations = method(Options => options morphisms)
 representations (Matroid, GaloisField) := List => opts -> (M, k) -> (
-    -- reps := apply(morphisms(foundation M, pasture k, opts), representation_M);
-    -- apply(reps, A -> matrix table(rank M, #M_*, (i,j) -> (
-    maps := morphisms(foundation M, pasture k, opts);
+    maps := morphisms(foundation(M, Strategy => "bases"), pasture k, opts);
     apply(maps/representation_M, A -> matrix table(rank M, #M_*, (i,j) -> (
         if A#i#j === 0 then 0_k
         else if A#i#j === 1 then 1_k
@@ -1150,7 +1160,7 @@ wheel ZZ := Matroid => r -> matroid wheelGraph (r+1)
 whirl = method()
 whirl ZZ := Matroid => r -> relaxation wheel(r+1)
 
--- Note: for wheels/whirls, computing foundations via Strategy => "Hyperplanes" is faster, but the opposite is true for spikes/swirls
+-- Note: for wheels/whirls, computing foundations via Strategy => "hyperplanes" is faster, but the opposite is true for spikes/swirls
 
 end--
 
@@ -1164,19 +1174,14 @@ Q6 = matroid(toList(0..5), {{0,1,2},{0,3,4}}, EntryMode => "nonbases")
 R1 = matroid(toList(0..6), {{0,1,2,3}}, EntryMode =>"nonbases")
 R2 = matroid(toList(0..6), {{0,1,2},{4,5,6}}, EntryMode => "nonbases")
 R3 = matroid(toList(0..6), {{0,1,2}}, EntryMode => "nonbases")
-Q8 = matroid(toList(0..<8), {set {0,1,2,3},set {0,1,4,5},set {1,2,5,6},set {2,3,6,7},set {0,3,4,7},set {4,5,6,7},set {0,1,6,7},set {1,2,4,7},set {2,3,4,5},set {0,3,5,6},set {0,2,4,6}}, EntryMode => "nonbases")
-L8 = matroid({0,1,2,3,4,5,6,7}, {set{0,1,2,3},set{0,1,4,5},set{1,2,5,6},set{2,3,6,7},set{0,3,4,7},set{4,5,6,7},set{0,7,2,5},set{1,6,3,4}}, EntryMode => "nonbases")
-Q8 = matroid({0,1,2,3,4,5,6,7}, {set{0,1,2,3},set{0,1,4,5},set{1,2,5,6},set{2,3,6,7},set{0,3,4,7},set{4,5,6,7}, EntryMode => "nonbases")
-nonP = matroid(toList(0..8), {{0,1,2},{0,4,8},{0,3,7},{1,3,6},{1,5,8},{2,4,6},{2,5,7},{6,7,8}}, EntryMode => "nonbases")
-R9A = matroid(toList(0..8),{{0,1,2,7},{0,1,3,4},{0,1,5,8},{0,2,3,8},{0,2,4,6},{0,3,6,7},{0,4,5,7},{1,2,3,5},{1,3,7,8},{1,4,6,8},{2,4,7,8},{3,4,5,8},{5,6,7,8}}, EntryMode => "nonbases")
-M = matroid(toList(0..<7),{set {0, 1, 2}, set {0, 3, 4}, set {1, 3, 5}, set {2, 4, 5}, set {2, 3, 6}}, EntryMode => "nonbases")
-N = matroid(toList(0..<8),{set {0, 1, 2, 3}, set {0, 1, 4, 5}, set {2, 3, 4, 5}, set {0, 1, 6, 7}, set {2, 3, 6, 7}, set {4, 5, 6, 7}}, EntryMode => "nonbases")
-GF 4; BR = matrix {{1,0,0,1,1,1,1,1,1,1,1},{0,1,0,a,1,a+1,1,0,a+1,a+1,1},{0,0,1,a,a+1,1,0,a+1,a+1,a,a}} -- representation of Betsy-Ross
-BRplus = BR | transpose matrix{{1,0,1}} -- foundation is F4
+Q8 = matroid(toList(0..<8), {{0,1,2,3},{0,1,4,5},{1,2,5,6},{2,3,6,7},{0,3,4,7},{4,5,6,7},{0,1,6,7},{1,2,4,7},{2,3,4,5},{0,3,5,6},{0,2,4,6}}, EntryMode => "nonbases")
+L8 = matroid(toList(0..<8), {{0,1,2,3},{0,1,4,5},{1,2,5,6},{2,3,6,7},{0,3,4,7},{4,5,6,7},{0,7,2,5},{1,6,3,4}}, EntryMode => "nonbases")
+Q8 = matroid(toList(0..<8), {{0,1,2,3},{0,1,4,5},{1,2,5,6},{2,3,6,7},{0,3,4,7},{4,5,6,7}, EntryMode => "nonbases")
+M = matroid(toList(0..<7), {{0,1,2},{0,3,4},{1,3,5},{2,4,5},{2,3,6}}, EntryMode => "nonbases")
+N = matroid(toList(0..<8), {{0,1,2,3},{0,1,4,5},{2,3,4,5},{0,1,6,7},{2,3,6,7},{4,5,6,7}}, EntryMode => "nonbases")
 GF 4; D = matrix{{1,0,0,1,a,1,0,a+1,1},{0,1,0,a,a,1,a,1,a+1},{0,0,1,0,1,1,1,1,1}}
 GF 4; D = matrix{{1,0,0,1,a+1,1,0,a,1},{0,1,0,a+1,a+1,1,a+1,1,a},{0,0,1,0,1,1,1,1,1}}
-M = matroid (matrix{{7:1}} || transpose matrix {{-3,0}, {-3/4,-1}, {3/2,-2}, {-3/4,1}, {3/2,2}, {0,0}, {3,0}}) -- Example 2.2 in paper
-GF 4; M = matroid matrix{{1,1,0,0,a+1,0,0,1,1},{0,0,1,0,a,0,a+1,a,1},{1,0,0,1,1,0,a,a+1,1},{a,0,0,0,0,1,1,1,1}} -- morphisms(foundation M, pasture GF 4)
+M = matroid (matrix{{7:1}} || transpose matrix {{-3,0},{-3/4,-1},{3/2,-2},{-3/4,1},{3/2,2},{0,0},{3,0}}) -- Example 2.2 in paper
 
 -- a class of non-orientable matroids (Bland--Las-Vergnas, Orientability of Matroids, Ex. 3.11)
 r = 6
@@ -1184,9 +1189,22 @@ C = apply(subsets(r, 2), p -> p | {p#0 + r, p#1 + r}) | apply(r, i -> delete(i, 
 M = matroid(toList(0..<2*r), C | select(subsets(2*r, r+1), S -> not any(C, c -> isSubset(c, S))), EntryMode => "circuits")
 elapsedTime morphisms(foundation M, specificPasture "sign")
 
-U = foundation uniformMatroid_2 4
-V = foundation uniformMatroid_2 5
-F = foundation uniformMatroid_3 6
+-- Example 6.8.4 in Oxley
+needsPackage "Cyclotomic"
+A := k -> (
+    K := cyclotomicField k;
+    alpha := K_0;
+    id_(K^3) | matrix{{1,1},{1-alpha,1},{1,0}} | matrix{apply(k-1, i -> ( f = sum(i+1, j -> alpha^j); matrix{{1,0},{1,1},{f,f}} ))}
+)
+areIsomorphic(matroid A(2), specificMatroid "nonfano")
+M = matroid A(6)
+elapsedTime F = foundation M
+representations(M, GF 2^8)
+representations(M, GF 3^5)
+representations(M, GF 5)
+representations(M, GF 5^2)
+representations(M, GF 7)
+-- matroid A(k) is representable over finite field iff order of field is 1 mod k (i.e. field contains primitive kth root of unity)
 
 -- 0 = a, 1 = b, 2 = -b, 3 = eps+a-b, 4 = -a, 5 = eps-a+b
 fundEltsU = flatten flatten U.hexagons
@@ -1320,7 +1338,8 @@ set includedIndices
 -- determining if a pasture is a tensor product of specified pastures
 -- compute symmetry quotients?
 -- Handle quotient by full rank sublattice correctly
--- Bug in morphisms: first hexagon of type 4
+-- inducedMapFromMinor with Strategy => "bases"
+-- speed up U24 minor computation in Strategy => "bases" using Scum Theorem
 
 restart
 load "foundations.m2"
