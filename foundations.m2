@@ -954,7 +954,8 @@ inducedMapFromMinor (Matroid, ZZ, String) := PastureMorphism => (M, e, mode) -> 
     )
 )
 
---Positive Orientability (cf. Thm 5.2 in https://arxiv.org/pdf/1310.4159.pdf)
+-- Positive Orientability (cf. Thm 5.2 in https://arxiv.org/pdf/1310.4159.pdf)
+
 isNonCrossing = method()
 isNonCrossing (List, List) := Boolean => (C, D) -> (  -- assumes C and D are disjoint
     (minC, maxC, minD, maxD) := (min C, max C, min D, max D);
@@ -967,10 +968,29 @@ isPositivelyOriented Matroid := Boolean => M -> (
     all(circuits M, C -> all(select(circuits dual M, D -> #(D * C) == 0), D -> isNonCrossing(C, D)))
 )
 
-isPositivelyOrientable = method()
-isPositivelyOrientable Matroid := Boolean => M -> (
-    any(permutations (#M_*), phi -> isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits"))
+positiveOrientation = method()
+positiveOrientation Matroid := List => M -> (
+    aut := getIsos(M, M);
+    checkedPerms := set{};
+    for phi in permutations (#M_*) do (
+        if checkedPerms#?phi then continue;
+        if isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits") then return phi;
+        checkedPerms = checkedPerms + set apply(aut, f -> phi_f);
+    );
+    null
+    -- any(permutations (#M_*), phi -> isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits"))
 )
+
+isPositivelyOrientable = method()
+isPositivelyOrientable Matroid := Boolean => M -> positiveOrientation M =!= null
+
+TEST ///
+V = specificMatroid "vamos"
+assert not isPositivelyOriented V
+assert isPositivelyOrientable V
+M = matroid(toList(0..<6), {{0,1,2},{0,3,4},{1,3,5}}, EntryMode => "nonbases")
+assert not isPositivelyOrientable M
+///
 
 -- Finding representation from pasture morphisms
 
