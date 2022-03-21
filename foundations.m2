@@ -66,7 +66,8 @@ pasture GaloisField := Pasture => k -> (
         a := exps#0;
         -- b := for j in exps do if x^a + x^j - 1 == 0 then break j;
         b := multToAdd#(1 - x^a);
-        h := {{a,b}, {(-a)%n,(eps-a+b)%n}, {(-b)%n,(eps-b+a)%n}};
+        -- h := {{a,b}, {(-a)%n,(eps-a+b)%n}, {(-b)%n,(eps-b+a)%n}};
+        h := {{a,b}, {n-a,(eps-a+b)%n}, {n-b,(eps-b+a)%n}};
         exps = exps - set flatten h;
         h/(p -> p/(e -> matrix{{e}} % g))
     );
@@ -954,44 +955,6 @@ inducedMapFromMinor (Matroid, ZZ, String) := PastureMorphism => (M, e, mode) -> 
     )
 )
 
--- Positive Orientability (cf. Thm 5.2 in https://arxiv.org/pdf/1310.4159.pdf)
-
-isNonCrossing = method()
-isNonCrossing (List, List) := Boolean => (C, D) -> (  -- assumes C and D are disjoint
-    (minC, maxC, minD, maxD) := (min C, max C, min D, max D);
-    (minC < minD and maxC > maxD) or (minD < minC and maxD > maxC)
-)
-isNonCrossing (Set, Set) := Boolean => (C, D) -> isNonCrossing(toList C, toList D)
-
-isPositivelyOriented = method()
-isPositivelyOriented Matroid := Boolean => M -> (
-    all(circuits M, C -> all(select(circuits dual M, D -> #(D * C) == 0), D -> isNonCrossing(C, D)))
-)
-
-positiveOrientation = method()
-positiveOrientation Matroid := List => M -> (
-    aut := getIsos(M, M);
-    checkedPerms := set{};
-    for phi in permutations (#M_*) do (
-        if checkedPerms#?phi then continue;
-        if isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits") then return phi;
-        checkedPerms = checkedPerms + set apply(aut, f -> phi_f);
-    );
-    null
-    -- any(permutations (#M_*), phi -> isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits"))
-)
-
-isPositivelyOrientable = method()
-isPositivelyOrientable Matroid := Boolean => M -> positiveOrientation M =!= null
-
-TEST ///
-V = specificMatroid "vamos"
-assert not isPositivelyOriented V
-assert isPositivelyOrientable V
-M = matroid(toList(0..<6), {{0,1,2},{0,3,4},{1,3,5}}, EntryMode => "nonbases")
-assert not isPositivelyOrientable M
-///
-
 -- Finding representation from pasture morphisms
 
 representation = method()
@@ -1103,6 +1066,44 @@ representations (Matroid, GaloisField) := List => opts -> (M, k) -> (
     )))
 )
 
+-- Positive Orientability (cf. Thm 5.2 in https://arxiv.org/pdf/1310.4159.pdf)
+
+isNonCrossing = method()
+isNonCrossing (List, List) := Boolean => (C, D) -> (  -- assumes C and D are disjoint
+    (minC, maxC, minD, maxD) := (min C, max C, min D, max D);
+    (minC < minD and maxC > maxD) or (minD < minC and maxD > maxC)
+)
+isNonCrossing (Set, Set) := Boolean => (C, D) -> isNonCrossing(toList C, toList D)
+
+isPositivelyOriented = method()
+isPositivelyOriented Matroid := Boolean => M -> (
+    all(circuits M, C -> all(select(circuits dual M, D -> #(D * C) == 0), D -> isNonCrossing(C, D)))
+)
+
+positiveOrientation = method()
+positiveOrientation Matroid := List => M -> (
+    aut := getIsos(M, M);
+    checkedPerms := set{};
+    for phi in permutations (#M_*) do (
+        if checkedPerms#?phi then continue;
+        if isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits") then return phi;
+        checkedPerms = checkedPerms + set apply(aut, f -> phi_f);
+    );
+    null
+    -- any(permutations (#M_*), phi -> isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits"))
+)
+
+isPositivelyOrientable = method()
+isPositivelyOrientable Matroid := Boolean => M -> positiveOrientation M =!= null
+
+TEST ///
+V = specificMatroid "vamos"
+assert not isPositivelyOriented V
+assert isPositivelyOrientable V
+M = matroid(toList(0..<6), {{0,1,2},{0,3,4},{1,3,5}}, EntryMode => "nonbases")
+assert not isPositivelyOrientable M
+///
+
 -- (Quasi-)Fixed/cofixed elements
 
 isQuasiFixed = (M, e) -> coker (inducedMapFromMinor(M, e, "delete")).map == 0
@@ -1121,27 +1122,31 @@ isQuasiFree = M -> (
 fundamentalDiagram = method()
 fundamentalDiagram Matroid := Sequence => M -> (
     minorList := {uniformMatroid_2 4, uniformMatroid_2 5, specificMatroid "C5"};
-    minorList = minorList | (minorList_{1,2}/dual) | {uniformMatroid_2 4 ++ uniformMatroid_1 2};
+    minorList = minorList | (minorList_{1,2}/dual) | {uniformMatroid_2 4 ++ uniformMatroid_0 1, uniformMatroid_2 4 ++ uniformMatroid_1 2};
     U24minors := allMinors(M, minorList#0);
-    otherMinors := apply(toList(1..5), i -> allMinors(M, minorList#i));
+    otherMinors := apply(toList(1..6), i -> allMinors(M, minorList#i));
     numMinors := prepend(#U24minors, apply(otherMinors, s -> #s));
+    (U, N1, N2) := (numMinors#0, numMinors#-2, numMinors#-1);
+    N := sum numMinors - N1 - N2 - U;
     otherMinors = flatten otherMinors;
     V := toList(0..<(#U24minors + #otherMinors));
-    E := delete(null, flatten table(#U24minors, #otherMinors, (i, j) -> if isSubset(otherMinors#j#0, U24minors#i#0) and isSubset(otherMinors#j#1, U24minors#i#1) then {i,j+#U24minors}));
+    E := delete(null, flatten table(U, N+N1, (i, j) -> if isSubset(otherMinors#j#0, U24minors#i#0) and isSubset(otherMinors#j#1, U24minors#i#1) then {i, U+j}));
+    E = E | delete(null, flatten table(N1, N2, (i, j) -> if isSubset(otherMinors#(N+N1+j)#0, otherMinors#(N+i)#0) then {U+N+i, U+N+N1+j}));
     (numMinors, V, E)
 )
 
 HashTable _ List := (H, L) -> flatten apply(L, v -> H#v)
 
 coveringNumber = method()
-coveringNumber Matroid := ZZ => M -> (
+coveringNumber Matroid := Sequence => M -> (
     (S, V, E) := fundamentalDiagram M;
     H := hashTable((a,b) -> flatten {a,b}, E | E/reverse);
-    L := apply(S#1, i -> i + S#0) | apply(S#3, i -> i + S#0+S#1+S#2);
-    (n, r) := (#L, 0);
-    L0 := unique(L | H_L);
-    while n < #L0 do ( (n, r) = (#L0, r+1); L0 = unique(L0 | H_L0); );
-    r
+    L0 := apply(S#1, i -> i + S#0) | apply(S#3, i -> i + S#0+S#1+S#2);
+    all5EltMinors := toList(S#0..<(#S-S#-1));
+    (n, r) := (#L0, 0);
+    L := unique(L0 | H_L0);
+    while n < #L and not isSubset(all5EltMinors, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
+    (r, isSubset(all5EltMinors, L))
 )
 
 TEST ///
@@ -1181,6 +1186,34 @@ whirl = method()
 whirl ZZ := Matroid => r -> relaxation wheel(r+1)
 
 -- Note: for wheels/whirls, computing foundations via Strategy => "hyperplanes" is faster, but the opposite is true for spikes/swirls
+
+extinF4 = method()
+extinF4 (Matrix) := List => A -> (
+    r = rank A;
+    entA = entries transpose A;
+    b = first select(flatten entries A, e -> (e != 0 and e !=1));
+    -- b = (GF 4).PrimitiveElement;
+    l := {b-b,b/b,b,b+1};
+    l2 := (l**l)/toList;
+    l3 := (l**l2)/toList/flatten;
+    l4 := (l2**l2)/toList/flatten;
+    l5 := (l2**l3)/toList/flatten;
+    lastCols := if r == 3 then flatten (l2/(c -> {{first l}| c, {l#2} | c})) else if r == 4 then flatten (l3/(c -> {{first l}| c, {l#2} | c})) else if r == 5 then flatten (l4/(c -> {{first l}| c, {l#2} | c})) else if r == 6 then flatten (l5/(c -> {{first l}| c, {l#2} | c})) ;
+    matrices := apply(lastCols, c -> transpose matrix(entA | {c}));
+    matroids := matrices/matroid;
+    select(matroids, M -> isSimple M)
+)
+
+extinOrientF4 = method()
+extinOrientF4 (Matrix) := List => A -> (
+    mats := isoTypes (extinF4(A));
+    select(mats, M -> #morphisms(foundation M, specificPasture "sign", FindOne => true)>0)
+)
+
+extinOrientF4 (Matroid) := List => M -> (
+    matrices := representations(M, GF 4);
+    isoTypes (flatten apply(matrices, A -> extinOrientF4(A)))
+)
 
 end--
 
@@ -1351,6 +1384,16 @@ while finishGen == false do (
 );
 set includedIndices
 ))
+
+N = matroid(toList(0..7),{set {0, 1, 2, 3}, set {0, 1, 4, 5}, set {2, 3, 4, 5}, set {0, 2, 4, 6}, set {1, 3, 5, 7}, set {1, 2, 6, 7}, set {3, 4, 6, 7}, set {0, 5, 6, 7}}, EntryMode => "nonbases")
+
+N1 = matroid(toList(0..8),{{0,1,2,3},{0,1,4,5},{0,2,4,6},{1,3,5,6},{1,2,4,7},{2,3,5,7},{3,4,6,7},{0,5,6,7},{0,1,4,8},{0,2,4,8},{0,3,4,8},{0,1,5,8},{2,3,5,8},{0,4,5,8},{1,4,5,8},{0,2,6,8},{0,4,6,8},{2,4,6,8},{2,3,7,8},{0,4,7,8},{2,5,7,8},{3,5,7,8},{1,6,7,8}}, EntryMode => "nonbases")
+
+N2 = matroid(toList(0..8),{ {0,1,2,3},{0,1,2,4},{0,1,3,4},{0,2,3,4},{1,2,3,4},{0,1,5,6},{2,3,5,6},{0,2,5,7},{1,4,5,7},{1,2,6,7},{3,4,6,7},{0,1,2,8},{0,1,3,8},{0,2,3,8},{1,2,3,8},{0,1,4,8},{0,2,4,8},{1,2,4,8},{0,3,4,8},{1,3,4,8},{2,3,4,8},{2,3,5,8},{0,4,5,8},{2,3,6,8},{0,4,6,8},{2,5,6,8},{3,5,6,8},{2,3,7,8},{0,4,7,8}}, EntryMode => "nonbases")
+
+fullRankSublattice foundation N; -- gives an error
+morphisms(foundation N1, G) -- should be isomorphic
+morphisms(foundation N2, pasture GF 4) --should be non-empty
 
 -- TODO:
 -- Q: when checking torsPairs, enough to consider torsion?
