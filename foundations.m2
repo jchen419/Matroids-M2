@@ -317,7 +317,8 @@ foundation = method(Options => {Strategy => null, HasF7Minor => null, HasF7dualM
 foundation Matroid := Foundation => opts -> M -> (
     if M.cache#?"foundation" and (opts.Strategy === null or M.cache#"foundation".cache#"strategy" === opts.Strategy) then M.cache#"foundation" else M.cache#"foundation" = (
     r := rank M;
-    strat := if opts.Strategy === null then "bases" else opts.Strategy;
+    strat := toLower if opts.Strategy === null then "bases" else opts.Strategy;
+    if debugLevel > 0 then << "Using strategy " << strat << endl;
     if strat === "hyperplanes" then (
         hypMap := hashTable apply(#hyperplanes M, i -> (hyperplanes M)#i => i);
         if debugLevel > 5 then print("hypMap: " | net hypMap);
@@ -673,7 +674,7 @@ fullRankSublattice Pasture := List => P -> (
         L := if g == 0 then map(ZZ^n, ZZ^0, 0) else matrix{flatten for i to #G-1 list if G#i#0#2 == 1 + G#i#0#1 then G#i#1 else G#i#1#1};
         k := 0;
         z := map(ZZ^(#torsPart), ZZ^1, 0);
-        torsPairs := {};
+        otherPairs := {};
         generatingRules := flatten for i to #G-1 list (
             if G#i#0#2 == 1 + G#i#0#1 then ( -- type 3 pair
                 k = k+1;
@@ -685,9 +686,9 @@ fullRankSublattice Pasture := List => P -> (
                 coeff = (gens ker((L_(toList(0..<i+k)) | B)^freePart))_{0};
                 if isType2Pair and abs((flatten entries coeff)#-2) != 1 then (
                     L = submatrix(L, , toList(0..<i+k)) | G#i#1#0 | submatrix(L, , toList(i+k+1..<g));
-                    coeff = coeff^{0..<i+k-1,i+k+1,i+k};
+                    (B, coeff) = (B_{1,0}, coeff^{0..<i+k,i+k+1,i+k});
                 );
-                if abs((flatten entries coeff)#(if isType2Pair then -2 else -1)) != 1 then torsPairs = append(torsPairs, G#i#1);
+                if abs((flatten entries coeff)#(if isType2Pair then -2 else -1)) != 1 then otherPairs = append(otherPairs, G#i#1);
                 {{(L_(toList(0..<i+k)) | B)^torsPart*coeff, coeff}}
             )
         );
@@ -699,10 +700,10 @@ fullRankSublattice Pasture := List => P -> (
             coeffs := lift(c*(transpose matrix{C}), ZZ);
             (B*coeffs - c*e, coeffs, c)
         ))));
-        torsPairs = torsPairs | delete(null, flatten apply(#S, i -> apply(#(S#i), j -> if any(type4Data#i#j, t -> abs last t != 1) then S#i#j#0)));
+        otherPairs = otherPairs | delete(null, flatten apply(#S, i -> apply(#(S#i), j -> if any(type4Data#i#j, t -> abs last t != 1) then S#i#j#0)));
         P.cache#"latticeGensMatrix" = L;
         P.cache#"generatingRules" = generatingRules;
-        P.cache#"torsPairs" = torsPairs;
+        P.cache#"otherPairs" = otherPairs; -- pairs not contained in lattice L (i.e. abs(coeff) > 1)
         P.cache#"type4Data" = type4Data;
         P.cache#"quotientLattice" = minPres coker(L^freePart);
         G
@@ -737,7 +738,7 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     A := P1.cache#"latticeGensMatrix";
     generatingRules := P1.cache#"generatingRules";
     torsLatticeGens := generatingRules/first;
-    torsPairs := P1.cache#"torsPairs";
+    otherPairs := P1.cache#"otherPairs";
     type4Data := P1.cache#"type4Data";
     B := inverse sub(A^freePart1, QQ);
     
@@ -793,7 +794,7 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                         data := type4Data#(level+1)#i;
                         torsPair := torsType4#(level+1)#i;
                         v := set apply(2, j -> ((C0 | c)*data#j#1 - torsPair#j) % P2star);
-                        any(fundPairsP2, p -> set{p#0*data#0#2 % P2star, p#1*data#0#2 % P2star} === v)
+                        any(fundPairsP2unordered, p -> set{p#0*data#0#2 % P2star, p#1*data#1#2 % P2star} === v)
                     ))
                 ));
                 level = level + 1;
@@ -811,8 +812,8 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                 for psi in K list (
                     M := phi | ((torsE + psi) || freeE);
                     if opts.FindIso and abs det M != 1 then continue;
-                    -- if not all(torsPairs, p -> any(P2.hexagons, h -> compareHex({M*p#0 % P2star, M*p#1 % P2star}, h))) then continue;
-                    if not all(torsPairs, p -> member(set {M*p#0 % P2star, M*p#1 % P2star}, fundPairsP2set)) then continue;
+                    -- if not all(otherPairs, p -> any(P2.hexagons, h -> compareHex({M*p#0 % P2star, M*p#1 % P2star}, h))) then continue;
+                    if not all(otherPairs, p -> member(set {M*p#0 % P2star, M*p#1 % P2star}, fundPairsP2set)) then continue;
                     if opts.FindOne or opts.FindIso then return {pastureMorphism(P1, P2, M)} else M
                 )
             )
@@ -964,11 +965,13 @@ representation (Matroid, PastureMorphism) := Matrix => (M, phi) -> (
     -- if not F.cache#"strategy" === "bases" then error "Expected presentation of the foundation of M using bases. Please recompute using Strategy => \"bases\"";
     B := sort toList first bases M;
     (ch, basesMap) := (F.cache#"pruningMap", F.cache#"genTable");
+    allBases := set bases M;
     table(rank M, #M_*, (i,j) -> (
         p := position(B, b -> b === j);
         if p === null then (
             B1 := set B - set{B#i} + set{j};
-            if not isDependent(M, B1) then (
+            -- if not isDependent(M, B1) then (
+            if member(B1, allBases) then (
                 s := (i+position(sort toList B1, b -> b === j))*phi.target.epsilon;
                 s + (matrix(phi.map))*ch_{basesMap#B1}
             ) else 0
@@ -1058,13 +1061,33 @@ representation (Matroid, PastureMorphism) := Matrix => (M, phi) -> (
 
 representations = method(Options => options morphisms)
 representations (Matroid, GaloisField) := List => opts -> (M, k) -> (
-    maps := morphisms(foundation(M, Strategy => "bases"), pasture k, opts);
-    apply(maps/representation_M, A -> matrix table(rank M, #M_*, (i,j) -> (
+    reps := apply(morphisms(foundation M, pasture k, opts), representation_M);
+    apply(reps, A -> matrix table(rank M, #M_*, (i,j) -> (
+    -- maps := morphisms(foundation(M, Strategy => "bases"), pasture k, opts);
+    -- apply(maps/representation_M, A -> matrix table(rank M, #M_*, (i,j) -> (
         if A#i#j === 0 then 0_k
         else if A#i#j === 1 then 1_k
         else (k.PrimitiveElement)^(if A#i#j == 0 then 0 else (A#i#j)_(0,0))
     )))
 )
+
+TEST ///
+N = matroid(toList(0..7),{set {0, 1, 2, 3}, set {0, 1, 4, 5}, set {2, 3, 4, 5}, set {0, 2, 4, 6}, set {1, 3, 5, 7}, set {1, 2, 6, 7}, set {3, 4, 6, 7}, set {0, 5, 6, 7}}, EntryMode => "nonbases")
+L = fullRankSublattice foundation N
+assert(#flatten (foundation N).cache#"type4Data" == 2)
+///
+
+TEST ///
+N1 = matroid(toList(0..8),{{0,1,2,3},{0,1,4,5},{0,2,4,6},{1,3,5,6},{1,2,4,7},{2,3,5,7},{3,4,6,7},{0,5,6,7},{0,1,4,8},{0,2,4,8},{0,3,4,8},{0,1,5,8},{2,3,5,8},{0,4,5,8},{1,4,5,8},{0,2,6,8},{0,4,6,8},{2,4,6,8},{2,3,7,8},{0,4,7,8},{2,5,7,8},{3,5,7,8},{1,6,7,8}}, EntryMode => "nonbases")
+G = pasture([x], "x + x^2")
+assert(#morphisms(foundation N1, G) > 0)
+///
+
+TEST ///
+N2 = matroid(toList(0..8),{ {0,1,2,3},{0,1,2,4},{0,1,3,4},{0,2,3,4},{1,2,3,4},{0,1,5,6},{2,3,5,6},{0,2,5,7},{1,4,5,7},{1,2,6,7},{3,4,6,7},{0,1,2,8},{0,1,3,8},{0,2,3,8},{1,2,3,8},{0,1,4,8},{0,2,4,8},{1,2,4,8},{0,3,4,8},{1,3,4,8},{2,3,4,8},{2,3,5,8},{0,4,5,8},{2,3,6,8},{0,4,6,8},{2,5,6,8},{3,5,6,8},{2,3,7,8},{0,4,7,8}}, EntryMode => "nonbases")
+assert(#morphisms(foundation N2, pasture GF 4) > 0)
+assert all(representations(N2, GF 4), A -> N2 == matroid A)
+///
 
 -- Positive Orientability (cf. Thm 5.2 in https://arxiv.org/pdf/1310.4159.pdf)
 
@@ -1117,6 +1140,7 @@ isQuasiFree = M -> (
     all(select(toList(0..<#M_*), e -> isQuasiFixed_M e), e -> not is3Connected cosimpleMatroid (M\{e})) and  all(select(toList(0..<#M_*), e -> isQuasiCofixed_M e), e -> not is3Connected simpleMatroid (M/{e}))
 )
 
+-- Fundamental diagram
 
 fundamentalDiagram = method()
 fundamentalDiagram Matroid := Sequence => M -> (
@@ -1399,18 +1423,8 @@ while finishGen == false do (
 set includedIndices
 ))
 
-N = matroid(toList(0..7),{set {0, 1, 2, 3}, set {0, 1, 4, 5}, set {2, 3, 4, 5}, set {0, 2, 4, 6}, set {1, 3, 5, 7}, set {1, 2, 6, 7}, set {3, 4, 6, 7}, set {0, 5, 6, 7}}, EntryMode => "nonbases")
-
-N1 = matroid(toList(0..8),{{0,1,2,3},{0,1,4,5},{0,2,4,6},{1,3,5,6},{1,2,4,7},{2,3,5,7},{3,4,6,7},{0,5,6,7},{0,1,4,8},{0,2,4,8},{0,3,4,8},{0,1,5,8},{2,3,5,8},{0,4,5,8},{1,4,5,8},{0,2,6,8},{0,4,6,8},{2,4,6,8},{2,3,7,8},{0,4,7,8},{2,5,7,8},{3,5,7,8},{1,6,7,8}}, EntryMode => "nonbases")
-
-N2 = matroid(toList(0..8),{ {0,1,2,3},{0,1,2,4},{0,1,3,4},{0,2,3,4},{1,2,3,4},{0,1,5,6},{2,3,5,6},{0,2,5,7},{1,4,5,7},{1,2,6,7},{3,4,6,7},{0,1,2,8},{0,1,3,8},{0,2,3,8},{1,2,3,8},{0,1,4,8},{0,2,4,8},{1,2,4,8},{0,3,4,8},{1,3,4,8},{2,3,4,8},{2,3,5,8},{0,4,5,8},{2,3,6,8},{0,4,6,8},{2,5,6,8},{3,5,6,8},{2,3,7,8},{0,4,7,8}}, EntryMode => "nonbases")
-
-fullRankSublattice foundation N; -- gives an error
-morphisms(foundation N1, G) -- should be isomorphic
-morphisms(foundation N2, pasture GF 4) --should be non-empty
-
 -- TODO:
--- Q: when checking torsPairs, enough to consider torsion?
+-- Q: when checking otherPairs, enough to consider torsion?
 -- compute limits/colimits of pastures
 -- determining if a pasture is a tensor product of specified pastures
 -- compute symmetry quotients?
