@@ -1117,36 +1117,50 @@ isQuasiFree = M -> (
     all(select(toList(0..<#M_*), e -> isQuasiFixed_M e), e -> not is3Connected cosimpleMatroid (M\{e})) and  all(select(toList(0..<#M_*), e -> isQuasiCofixed_M e), e -> not is3Connected simpleMatroid (M/{e}))
 )
 
--- Fundamental diagram
 
 fundamentalDiagram = method()
 fundamentalDiagram Matroid := Sequence => M -> (
     minorList := {uniformMatroid_2 4, uniformMatroid_2 5, specificMatroid "C5"};
-    minorList = minorList | (minorList_{1,2}/dual) | {uniformMatroid_2 4 ++ uniformMatroid_0 1, uniformMatroid_2 4 ++ uniformMatroid_1 2};
+    minorList = minorList | (minorList_{1,2}/dual) | {uniformMatroid_2 4 ++ uniformMatroid_0 1, uniformMatroid_2 4 ++ uniformMatroid_1 1, uniformMatroid_2 4 ++ uniformMatroid_1 2};
     U24minors := allMinors(M, minorList#0);
-    otherMinors := apply(toList(1..6), i -> allMinors(M, minorList#i));
+    otherMinors := apply(toList(1..7), i -> allMinors(M, minorList#i));
     numMinors := prepend(#U24minors, apply(otherMinors, s -> #s));
-    (U, N1, N2) := (numMinors#0, numMinors#-2, numMinors#-1);
+    (U, N1, N2) := (numMinors#0, numMinors#-3 + numMinors#-2, numMinors#-1);
     N := sum numMinors - N1 - N2 - U;
     otherMinors = flatten otherMinors;
     V := toList(0..<(#U24minors + #otherMinors));
     E := delete(null, flatten table(U, N+N1, (i, j) -> if isSubset(otherMinors#j#0, U24minors#i#0) and isSubset(otherMinors#j#1, U24minors#i#1) then {i, U+j}));
-    E = E | delete(null, flatten table(N1, N2, (i, j) -> if isSubset(otherMinors#(N+N1+j)#0, otherMinors#(N+i)#0) then {U+N+i, U+N+N1+j}));
+    E = E | delete(null, flatten table(N1, N2, (i, j) -> if isSubset(otherMinors#(N+N1+j)#0, otherMinors#(N+i)#0) and isSubset(otherMinors#(N+N1+j)#1, otherMinors#(N+i)#1) then {U+N+i, U+N+N1+j}));
     (numMinors, V, E)
 )
 
 HashTable _ List := (H, L) -> flatten apply(L, v -> H#v)
 
 coveringNumber = method()
-coveringNumber Matroid := Sequence => M -> (
+coveringNumber (Matroid, ZZ) := Sequence => (M, opt) -> (
     (S, V, E) := fundamentalDiagram M;
     H := hashTable((a,b) -> flatten {a,b}, E | E/reverse);
     L0 := apply(S#1, i -> i + S#0) | apply(S#3, i -> i + S#0+S#1+S#2);
-    all5EltMinors := toList(S#0..<(#S-S#-1));
+    all5EltMinors := toList(S#0..<(#V-S#-1));
+    additional4Elts := toList((#V-S#-1-S#-2-S#-3)..<(#V-S#-1));
+    U24Minors := toList(0..<S#0);
     (n, r) := (#L0, 0);
     L := unique(L0 | H_L0);
-    while n < #L and not isSubset(all5EltMinors, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
-    (r, isSubset(all5EltMinors, L))
+    if #L =!= #L0 then r = 1;
+    if opt == 0 then (
+    	while n < #L and not isSubset(all5EltMinors, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
+    	result := (r, isSubset(all5EltMinors, L));
+    ) 
+    else if opt == 1 then(
+	while n < #L and not isSubset(U24Minors, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
+    	result = (r, isSubset(U24Minors, L));
+    )
+    else if opt == 2 then(
+	if #additional4Elts == 0 then r = 0;
+	while n < #L and not isSubset(additional4Elts, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
+    	result = (r, isSubset(additional4Elts, L));
+    );
+    result	
 )
 
 TEST ///
