@@ -480,17 +480,6 @@ assert Equation((#freePartPasture U26, #U26.hexagons), (9, 15))
 
 -- Morphisms
 
-hexTypes = method()
-hexTypes (Pasture, Boolean) := List => (P, doTally) -> (
-    A := presentation P.multiplicativeGroup;
-    F3 := select(P.hexagons, h -> #unique flatten h == 1);
-    D := select(P.hexagons - set F3, h -> any(h, p -> #unique p == 1));
-    H := select(P.hexagons - set F3 - set D, h -> (p := unique flatten h; #p == 2 and all(p, e -> 3*e % A == P.epsilon)));
-    U := P.hexagons - set F3 - set D - set H;
-    if doTally then hashTable {("U", #U), ("D", #D), ("H", #H), ("F3", #F3)} else {U, D, H, F3}
-)
-hexTypes Pasture := HashTable => P -> hexTypes(P, true)
-
 freePartPasture = method()
 freePartPasture Pasture := List => P -> (
     A := presentation P.multiplicativeGroup;
@@ -662,6 +651,29 @@ fundEltPartners (Pasture, Thing) := List => (P, e) -> (
         hashTable apply(FE, e -> e => fundEltPartners(FP, e))
     );
     if H#?e then H#e else {}
+)
+
+hexTypes = method()
+hexTypes (Pasture, Boolean) := List => (P, doTally) -> (
+    A := presentation P.multiplicativeGroup;
+    F3 := select(P.hexagons, h -> #unique flatten h == 1);
+    D := select(P.hexagons - set F3, h -> any(h, p -> #unique p == 1));
+    H := select(P.hexagons - set F3 - set D, h -> (p := unique flatten h; #p == 2 and all(p, e -> 3*e % A == P.epsilon)));
+    U := P.hexagons - set F3 - set D - set H;
+    if doTally then hashTable {("U", #U), ("D", #D), ("H", #H), ("F3", #F3)} else {U, D, H, F3}
+)
+hexTypes Pasture := HashTable => P -> hexTypes(P, true)
+
+
+pairTypes = method()
+pairTypes Pasture := HashTable => P -> (
+    L := fullRankSublattice P;
+    (n1, n2, n3) := (0, 0, 0);
+    for p in L do (
+        r := p#0;
+        if r#2 > r#1 then n3 = n3 + 1 else if r#1 > r#0 then n1 = n1 + 1 else n2 = n2 + 1
+    );
+    hashTable {("type 1", n1), ("type 2", n2), ("type 3", n3), ("type 4", #flatten P.cache#"type4Data")}
 )
 
 fullRankSublattice = method()
@@ -952,6 +964,12 @@ assert hasMinor(M, specificMatroid "V8+")
 assert Equation(2, #morphisms(foundation M, pasture k))
 ///
 
+TEST /// -- all rank 4 matroids on 8 elements with a type 2 pair in foundation
+r4n8 = select(allMatroids 8, M -> rank M == 4);
+type2 = apply({71,127,128,131,158,162,167,173,175,204,223,228,301,353}, i -> r4n8#i)
+assert all(type2, M -> (pairTypes foundation M)#"type 2" > 0)
+///
+
 -- Natural map from the foundation of minor
 
 hyperplaneCorrespondenceTable = method()
@@ -1011,19 +1029,20 @@ representations (Matroid, GaloisField) := List => opts -> (M, k) -> (
 )
 
 TEST ///
-N = matroid(toList(0..7),{set {0, 1, 2, 3}, set {0, 1, 4, 5}, set {2, 3, 4, 5}, set {0, 2, 4, 6}, set {1, 3, 5, 7}, set {1, 2, 6, 7}, set {3, 4, 6, 7}, set {0, 5, 6, 7}}, EntryMode => "nonbases")
-L = fullRankSublattice foundation N
-assert(#flatten (foundation N).cache#"type4Data" == 2)
+N = matroid(toList(0..7), {{0,1,2,3},{0,1,4,5},{2,3,4,5},{0,2,4,6},{1,3,5,7},{1,2,6,7},{3,4,6,7},{0,5,6,7}}, EntryMode => "nonbases")
+assert(pairTypes foundation N === hashTable apply({(1,0),(2,1),(3,1),(4,2)}, p -> ("type " | toString p#0, p#1)))
 ///
 
 TEST ///
-N1 = matroid(toList(0..8),{{0,1,2,3},{0,1,4,5},{0,2,4,6},{1,3,5,6},{1,2,4,7},{2,3,5,7},{3,4,6,7},{0,5,6,7},{0,1,4,8},{0,2,4,8},{0,3,4,8},{0,1,5,8},{2,3,5,8},{0,4,5,8},{1,4,5,8},{0,2,6,8},{0,4,6,8},{2,4,6,8},{2,3,7,8},{0,4,7,8},{2,5,7,8},{3,5,7,8},{1,6,7,8}}, EntryMode => "nonbases")
+N1 = matroid(toList(0..8), {{0,1,2,3},{0,1,4,5},{0,2,4,6},{1,3,5,6},{1,2,4,7},{2,3,5,7},{3,4,6,7},{0,5,6,7},{0,1,4,8},{0,2,4,8},{0,3,4,8},{0,1,5,8},{2,3,5,8},{0,4,5,8},{1,4,5,8},{0,2,6,8},{0,4,6,8},{2,4,6,8},{2,3,7,8},{0,4,7,8},{2,5,7,8},{3,5,7,8},{1,6,7,8}}, EntryMode => "nonbases")
 G = pasture([x], "x + x^2")
+assert(pairTypes G === hashTable apply({(1,0),(2,1),(3,0),(4,0)}, p -> ("type " | toString p#0, p#1)))
 assert Equation(2, #morphisms(foundation N1, G))
 ///
 
 TEST ///
-N2 = matroid(toList(0..8),{ {0,1,2,3},{0,1,2,4},{0,1,3,4},{0,2,3,4},{1,2,3,4},{0,1,5,6},{2,3,5,6},{0,2,5,7},{1,4,5,7},{1,2,6,7},{3,4,6,7},{0,1,2,8},{0,1,3,8},{0,2,3,8},{1,2,3,8},{0,1,4,8},{0,2,4,8},{1,2,4,8},{0,3,4,8},{1,3,4,8},{2,3,4,8},{2,3,5,8},{0,4,5,8},{2,3,6,8},{0,4,6,8},{2,5,6,8},{3,5,6,8},{2,3,7,8},{0,4,7,8}}, EntryMode => "nonbases")
+N2 = matroid(toList(0..8), {{0,1,2,3},{0,1,2,4},{0,1,3,4},{0,2,3,4},{1,2,3,4},{0,1,5,6},{2,3,5,6},{0,2,5,7},{1,4,5,7},{1,2,6,7},{3,4,6,7},{0,1,2,8},{0,1,3,8},{0,2,3,8},{1,2,3,8},{0,1,4,8},{0,2,4,8},{1,2,4,8},{0,3,4,8},{1,3,4,8},{2,3,4,8},{2,3,5,8},{0,4,5,8},{2,3,6,8},{0,4,6,8},{2,5,6,8},{3,5,6,8},{2,3,7,8},{0,4,7,8}}, EntryMode => "nonbases")
+assert(pairTypes foundation N2 === hashTable apply({(1,1),(2,0),(3,1),(4,1)}, p -> ("type " | toString p#0, p#1)))
 assert Equation(2, #morphisms(foundation N2, pasture GF 4))
 assert all(representations(N2, GF 4), A -> N2 == matroid A)
 ///
@@ -1213,7 +1232,7 @@ GF 4; D = matrix{{1,0,0,1,a,1,0,a+1,1},{0,1,0,a,a,1,a,1,a+1},{0,0,1,0,1,1,1,1,1}
 GF 4; D = matrix{{1,0,0,1,a+1,1,0,a,1},{0,1,0,a+1,a+1,1,a+1,1,a},{0,0,1,0,1,1,1,1,1}}
 M = matroid (matrix{{7:1}} || transpose matrix {{-3,0},{-3/4,-1},{3/2,-2},{-3/4,1},{3/2,2},{0,0},{3,0}}) -- Example 2.2 in paper
 
--- a class of non-orientable matroids (Bland--Las-Vergnas, Orientability of Matroids, Ex. 3.11)
+-- a class of non-orientable matroids (Bland--Las-Vergnas, Orientability of Matroids, Ex. 3.11, https://www.sciencedirect.com/science/article/pii/0095895678900801)
 r = 6
 C = apply(subsets(r, 2), p -> p | {p#0 + r, p#1 + r}) | apply(r, i -> delete(i, toList(0..<r)) | {i+r}) | {apply(r, i -> i+r)}
 M = matroid(toList(0..<2*r), C | select(subsets(2*r, r+1), S -> not any(C, c -> isSubset(c, S))), EntryMode => "circuits")
