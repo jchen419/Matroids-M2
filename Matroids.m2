@@ -57,6 +57,15 @@ export {
 	"seriesConnection",
 	"parallelConnection",
 	"sum2",
+	"singleElementExtension",
+	"CheckWellDefined",
+	"freeExtension",
+	"freeCoextension",
+	"elementaryQuotient",
+	"isQuotient",
+	"isElementaryQuotient",
+	"modularCut",
+	"isModularCut",
 	"relaxation",
 	"representationOf",
 	"relabel",
@@ -72,6 +81,9 @@ export {
 	"basisIndicatorMatrix",
 	"maxWeightBasis",
 	"idealChowRing",
+	"Presentation",
+	"ChowRingOptions",
+	"VariableOrder",
 	"cogeneratorChowRing",
 	"specificMatroid",
 	"allMatroids",
@@ -319,7 +331,9 @@ flats Matroid := List => M -> (
 )
 
 latticeOfFlats = method()
-latticeOfFlats Matroid := Poset => M -> poset(flats M/toList, (a, b) -> isSubset(a, b))
+latticeOfFlats Matroid := Poset => M -> poset(flats M/toList/sort, (a, b) -> isSubset(a, b))
+
+-- TO DO: Improve efficieincy by retaining flat containement info while making flats.
 
 fVector Matroid := HashTable => opts -> M -> hashTable pairs tally(flats M/rank_M)
 
@@ -475,6 +489,165 @@ sum2 (Matroid, Matroid) := Matroid => (M, N) -> (
 	if member(0, loops M | loops N | coloops M | coloops N) then error "Expected basepoint 0 to not be a coloop in both M and N";
 	seriesConnection(M, N) / set{0}
 )
+
+-- (CO)EXTENSIONS
+-----------------------------------------------------------------
+
+singleElementExtension = method(Options => {CheckWellDefined => false})
+
+singleElementExtension (Matroid, List) := Matroid => o -> (M, K) -> (
+    K' := K/toList;
+    if o.CheckWellDefined and not isModularCut(M, K') then (
+	error "singleElementExtension: Expected the second argument
+	to be a modular cut of the matroid given as the first argument."
+    );
+    E := toList M.groundSet;
+    e := (max E) + 1;
+    B := bases M;
+    r := rank M;
+    B' := select(hyperplanes M, H -> not (set K')#?H );
+    B' = flatten apply(B', H -> select(B, b -> #(b*H) == r - 1 ) );
+    B' = apply(B', I -> I + set {e});
+    matroid(E|{e}, B|B')
+)
+
+-- INPUT:  A matroid M and a list K of flats of M forming a modular cut.
+-- OUTPUT: The matroid M +_K e that is the single element extension of
+--         M by the modular cut K.  See [Ox, Sect 7.2].
+
+
+singleElementExtension (Matroid, Set) := Matroid => o -> (M, F) -> (
+    if not (set flats M)#?F then (
+	error "singleElementExtension: Expected the second argument
+	to be a flat of the matroid given as the first argument."
+    );
+    E := toList M.groundSet;
+    e := (max E) + 1;
+    B := bases M;
+    r := rank M;
+    B' := select(hyperplanes M, H -> not isSubset(F, H) );
+    B' = flatten apply(B', H -> select(B, b -> #(b*H) == r - 1 ) );
+    B' = apply(B', I -> I + set {e});
+    matroid(E|{e}, B|B')
+)
+
+-- INPUT:  A matroid M and a set F that is a flat of M.
+-- OUTPUT: The matroid M +_F e that is the (principal) single element extension of
+--         M by the modular cut of the interval [F, E].  See [Ox, Sect 7.2].
+
+
+-----------------------------------------------------------------
+
+freeExtension = method()
+
+freeExtension Matroid := Matroid => M -> singleElementExtension(M, M.groundSet)
+
+-- INPUT:  A matroid M.
+-- OUTPUT: The matroid M +_E(M) e that is the principal extension of
+--         M by the principal modular cut associated to the ground set
+--         E(M).  See [Ox, Sect 7.2].
+
+
+-----------------------------------------------------------------
+
+freeCoextension = method()
+
+freeCoextension Matroid := Matroid => M -> dual singleElementExtension(dual M, M.groundSet)
+
+-- INPUT:  A matroid M.
+-- OUTPUT: The matroid M +_E(M) e that is the principal extension of
+--         M by the principal modular cut associated to the ground set
+--         E(M).  See [Ox, Sect 7.2].
+
+
+
+-- MATROID QUOTIENTS
+-----------------------------------------------------------------
+
+elementaryQuotient = method(Options => {CheckWellDefined => false})
+
+elementaryQuotient (List, Matroid) := Matroid => o -> (K, M) -> (
+    M' := singleElementExtension(M, K, o);
+    e := max toList M'.groundSet;
+    M'/{e}
+)
+
+-- INPUT:  A matroid M and a list K of flats of M forming a modular cut.
+-- OUTPUT: The elementary quotient of M with respect to the modular cut K.
+--         See [Ox, Sect 7.3] 
+-- CAVEAT: K must be a proper, nonempty set of flats.   
+
+
+-----------------------------------------------------------------
+
+truncate (Set, Matroid) := Matroid => (F, M) -> (
+    M' := singleElementExtension(M, F);
+    e := max toList M'.groundSet;
+    M'/{e}
+)
+
+-- INPUT:  A matroid M and a set F that is a flat of M.
+-- OUTPUT: The matroid T_F(M) that is the principal truncation of
+--         M by with respect to F.  See [Ox, Sect 7.3]
+
+truncate Matroid := Matroid => M -> truncate(M.groundSet, M)
+
+-- INPUT:  A matroid M.
+-- OUTPUT: The matroid T(M) that is the truncation of M.  See [Ox, Sect 7.3].
+
+
+-----------------------------------------------------------------
+
+isQuotient = method()
+
+isQuotient (Matroid, Matroid) := Boolean => (M', M) -> (
+    M.groundSet === M'.groundSet and isSubset(set flats M', set flats M)
+)
+
+
+-----------------------------------------------------------------
+
+isElementaryQuotient = method()
+
+isElementaryQuotient (Matroid, Matroid) := Boolean => (M', M) -> (
+    isQuotient(M', M) and rank M' == rank M - 1
+)
+
+
+-----------------------------------------------------------------
+
+modularCut = method()
+
+modularCut (Matroid, Matroid) := List => (M', M) -> (
+    if not isElementaryQuotient(M', M) then (
+	error "modularCut: Expected the first argument to be an
+	elementary quotient matroid of the second argument."
+    );
+    select(flats M', f -> rank(M, f) - rank(M', f) == 1)/toList/sort
+)
+
+
+-----------------------------------------------------------------
+
+isModularCut = method()
+
+isModularCut (Matroid, List) := Boolean => (M, K) -> (
+    K' := set K;
+    L := latticeOfFlats M;
+    set (filter(L, K/toList/sort)/set) === K' and all(subsets(K, 2), p -> (
+		u := p#0 + p#1;
+		m := (p#0)*(p#1);
+		if rank(M, p#0) + rank(M, p#1) == rank(M, u) + rank(M, m) 
+		    then K'#?m
+		    else true
+    )) 
+)
+
+-- INPUT:  A matroid M and a list K of flats of M.
+-- OUTPUT: Whether K is a modular cut of M.
+
+
+-----------------------------------------------------------------
 
 relaxation = method()
 relaxation (Matroid, List) := Matroid => (M, S) -> relaxation(M, set indicesOf(M, S))
@@ -707,14 +880,62 @@ maxWeightBasis (Matroid, List) := Set => (M, w) -> (
 	maxWeightSol
 )
 
-idealChowRing = method()
-idealChowRing Matroid := Ideal => M -> (
-	x := symbol x; -- use symbol rather than getSymbol, in order to work with indices internally
-	F := delete({}, delete(M.groundSet, flats M)/toList/sort);
-	R := QQ[F/(f -> x_f)];
-	I2 := ideal(select(subsets(F, 2), s -> #unique(s#0 | s#1) > max(#(s#0), #(s#1)))/(p -> x_(p#0)*x_(p#1)));
-	L0 := sum(select(F, f -> member(0, f))/(f -> x_f));
-	I2 + ideal((1..#M.groundSet - 1)/(i -> sum(select(F, f -> member(i, f))/(f -> x_f)) - L0))
+idealChowRing = method(Options => {CoefficientRing => QQ, ChowRingOptions => new OptionTable from {MonomialOrder => GLex}, Presentation => "standard", Variable => "x", VariableOrder => null})
+idealChowRing Matroid := Ideal => opts -> M -> (
+	x := getSymbol opts.Variable;
+	N := monoid[apply((flats M)/toList/sort, f -> x_f), opts.ChowRingOptions];
+	k := opts.CoefficientRing;
+	S := k(N);
+	x = hashTable apply(S_*, v -> last baseName v => v);
+	if opts.Presentation =!= "standard" then (
+	    L := latticeOfFlats M;
+	    L' := subposet(L, select(vertexSet L, 
+		    F -> rank(M, F) >= if opts.Presentation === "FY" then 1 else 2
+	    ));
+            RM := L'.RelationMatrix;
+    	    incomp := apply(flatten apply(numColumns RM, j -> apply(select(j, i -> RM_j_i == 0), i -> {j, i}) ), 
+		    p -> {L'_(p#0), L'_(p#1)}
+	    );
+	);
+	I := if opts.Presentation === "simplicial" then (
+    	    mu := moebiusFunction L;
+    	    ideal apply(incomp, F -> (
+	    	    l := sum apply(select(vertexSet L', G -> compare(L, F#0, G)), G -> mu#(F#0, G)*x#G);
+	    	    l' := sum apply(select(vertexSet L', G -> compare(L, F#1, G)), G -> mu#(F#1, G)*x#G);
+	    	    l*l'
+	    ))
+	) else if opts.Presentation === "atom-free" then (
+    	    I1 := ideal apply(incomp, F -> x#(F#0)*x#(F#1));
+    	    I2 := ideal flatten apply(atoms L, a -> apply(select(vertexSet L', F -> not compare(L, a, F) ),
+	    	    F -> (x#F)*(sum apply(select(vertexSet L', 
+			G -> compare(L, a, G) and compare(L, F, G) ), G -> x#G ) )
+	    ));
+            I3 := ideal apply(subsets(atoms L, 2), F -> (
+		    l := sum apply(select(vertexSet L', G -> compare(L, F#0, G)), G -> x#G);
+		    l' := sum apply(select(vertexSet L', G -> compare(L, F#1, G)), G -> x#G);
+	    	    l*l'
+	    ));
+            I1 + I2 + I3
+        ) else if opts.Presentation === "FY" then (
+    	    I1 = ideal apply(incomp, F -> x#(F#0)*x#(F#1));
+    	    I2 = ideal apply(atoms L, a -> sum apply(select(vertexSet L', 
+			G -> compare(L, a, G)), G -> x#G 
+	    ));
+            I1 + I2
+        ) else (
+            F := delete({}, delete(M.groundSet, flats M)/toList/sort);
+	    I2 = ideal(select(subsets(F, 2), s -> #unique(s#0 | s#1) > max(#(s#0), #(s#1)))/(p -> x#(p#0)*x#(p#1)));
+	    L0 := sum(select(F, f -> member(0, f))/(f -> x#f));
+	    I2 + ideal((1..#M.groundSet - 1)/(i -> sum(select(F, f -> member(i, f))/(f -> x#f)) - L0))
+	);
+    	varOrder := support I;
+    	if opts.VariableOrder =!= null then (
+	    if set opts.VariableOrder =!= set varOrder then (
+		error "idealChowRing: Expected VariableOrder to match the support of the Chow ring ideal."
+	    );  
+	    varOrder = opts.VariableOrder;
+	);
+        sub(I, k(monoid [varOrder, opts.ChowRingOptions]) )
 )
 
 cogeneratorChowRing = method()
