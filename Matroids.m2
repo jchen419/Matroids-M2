@@ -84,6 +84,7 @@ export {
 	"Presentation",
 	"ChowRingOptions",
 	"VariableOrder",
+	"idealOrlikSolomonAlgebra",
 	"cogeneratorChowRing",
 	"specificMatroid",
 	"allMatroids",
@@ -938,6 +939,20 @@ idealChowRing Matroid := Ideal => opts -> M -> (
         sub(I, k(monoid [varOrder, opts.ChowRingOptions]) )
 )
 
+
+idealOrlikSolomonAlgebra = method(Options => {CoefficientRing => QQ, Variable => "e"})
+idealOrlikSolomonAlgebra Matroid := Ideal => opts -> M -> (
+    V := sort toList M.groundSet;
+    e := getSymbol opts.Variable;
+    E := (opts.CoefficientRing)[apply(V,v->e_v),SkewCommutative=>true];
+    e = hashTable apply(E_*, v -> last baseName v => v);
+    Cir := apply(circuits M,C->toList C);
+    return trim ideal apply(Cir,c->sum for i from 0 to length c - 1 list 
+	product for j from 0 to length c - 1 list if i == j then 1 
+	else (-1)^j*e#j);
+)
+
+
 cogeneratorChowRing = method()
 cogeneratorChowRing Matroid := RingElement => M -> ( -- sorted flats makes this 3x faster
 	t := getSymbol "t";
@@ -949,39 +964,61 @@ cogeneratorChowRing Matroid := RingElement => M -> ( -- sorted flats makes this 
 
 specificMatroid = method()
 specificMatroid String := Matroid => name -> (
-	if name == "U24" then (
-		uniformMatroid(2, 4)
-	) else if name == "C5" then (
-		matroid(toList(0..4), {{0,1,2}}, EntryMode => "nonbases")
-	) else if name == "P6" then (
-		matroid(toList(0..5), {{0,1,2}}, EntryMode => "nonbases")
-	) else if name == "Q6" then (
-		matroid(toList(0..5), {{0,1,2},{0,3,4}}, EntryMode => "nonbases")
-	) else if name == "fano" then (
+if name == "fano" then (
 		projectiveGeometry(2, 2)
 	) else if name == "nonfano" then (
-		relaxation(specificMatroid "fano", set{4,5,6})
+		relaxation(specificMatroid "fano", set{1,3,4})
 	) else if name == "V8+" then (
 		matroid(toList(0..7), {{0,1,2,3},{0,3,4,5},{1,2,4,5},{0,3,6,7},{1,2,6,7},{4,5,6,7}}/set, EntryMode => "nonbases")
 	) else if name == "vamos" then (
 		relaxation(specificMatroid "V8+", set{4,5,6,7})
 	) else if name == "pappus" then (
-		matroid(toList(0..8), {{0,1,2},{0,4,6},{0,5,7},{1,3,6},{1,5,8},{2,3,7},{2,4,8},{3,4,5},{6,7,8}}/set, EntryMode => "nonbases")
+		matroid(toList(0..8), {{0,1,2},{0,3,7},{0,4,8},{1,3,6},{1,5,8},{2,4,6},{2,5,7},{6,7,8}}/set, EntryMode => "nonbases")
 	) else if name == "nonpappus" then (
 		relaxation(specificMatroid "pappus", set{6,7,8})
+	) else if name == "nondesargues" then (
+		matroid(toList(0..9), {{0,2,5},{0,1,4},{0,7,8},{1,3,5},{2,3,4},{2,6,8},{3,6,9},{4,8,9},{5,6,7}}, EntryMode => "nonbases")
 	) else if name == "AG32" then (
 		affineGeometry(3, 2)
-	) else if name == "R9A" then (
-		matroid(toList(0..8),{{0,1,2,7},{0,1,3,4},{0,1,5,8},{0,2,3,8},{0,2,4,6},{0,3,6,7},{0,4,5,7},{1,2,3,5},{1,3,7,8},{1,4,6,8},{2,4,7,8},{3,4,5,8},{5,6,7,8}}, EntryMode => "nonbases")
-	) else if name == "R9B" then (
-		matroid(toList(0..8),{{0,1,2,7},{0,1,3,4},{0,1,6,8},{0,2,4,6},{0,3,5,8},{0,4,7,8},{1,2,3,5},{1,2,4,8},{1,3,7,8},{1,4,5,7},{2,3,6,7},{3,4,6,8},{5,6,7,8}}, EntryMode => "nonbases")
+	) else if name == "AG32prime" then (
+	        relaxation affineGeometry(3,2)
+	) else if name == "F8" then (
+	        relaxation relaxation affineGeometry(3,2)
+	) else if name == "J" then (
+                matroid (ZZ/3 ** matrix{{0,0,1,1,1,0,0,0},{1,1,0,1,0,1,0,0},{0,1,1,0,0,0,1,0},{1,0,0,0,-1,0,-1,1}})
+	) else if name == "L8" then (
+	        relaxation(relaxation(relaxation(relaxation(affineGeometry(3,2),{0,1,6,7}),{2,3,4,5}),{0,4,3,7}),{1,2,5,6})
+	) else if name == "O7" then (
+	        sum2(uniformMatroid(2,4),uniformMatroid(2,4))
+	) else if name == "P6" then (
+	        relaxation(specificMatroid "Q6", set{0,2,4}) 
+	) else if name == "P7" then (
+	        matroid(toList(0..6), {{0,1,2},{0,3,4},{0,5,6},{1,3,5},{2,4,6}}, EntryMode => "nonbases")
+	) else if name == "P8" then (
+                matroid (id_((ZZ/3)^4)| matrix{{0,1,1,-1},{1,0,1,1},{1,1,0,1},{-1,1,1,0}})
+	) else if name == "P8=" then (
+                matroid (id_((ZZ/5)^4)| matrix{{1,1,1,1},{1,1,3,4},{1,4,0,4},{1,2,1,0}})
+	) else if name == "Q6" then (
+	        matroid (toList(0..5), {{0,1,2},{0,3,4}}, EntryMode => "nonbases")
+	) else if name == "Q8" then (
+	        relaxation( specificMatroid "R8")
+	) else if name == "R6" then (
+	        sum2(uniformMatroid(2,4),uniformMatroid(2,4))
+	) else if name == "R8" then (
+	        relaxation(relaxation(affineGeometry(3,2),set{0,1,2,3}),set{4,5,6,7})
+	) else if name == "R9" then (
+	        matroid(toList(0..8), {{1,2,3},{3,4,5},{3,4,6},{3,5,6},{4,5,6},{6,7,1},{1,4,0},{1,5,8},{2,4,7},{2,5,0},{2,6,8},{3,7,8},{3,7,0},{3,8,0},{7,8,0}}, EntryMode => "nonbases")
 	) else if name == "R10" then (
-		matroid(id_((ZZ/2)^5) | matrix{{-1_(ZZ/2),1,0,0,1},{1,-1,1,0,0},{0,1,-1,1,0},{0,0,1,-1,1},{1,0,0,1,-1}})
-	) else if name == "betsyRoss" then (
-		a := (GF 4)_0;
-		matroid matrix {{1,0,0,1,1,1,1,1,1,1,1},{0,1,0,a,1,a+1,1,0,a+1,a+1,1},{0,0,1,a,a+1,1,0,a+1,a+1,a,a}}
-		-- matroid(toList(0..10), {{0,2,5},{0,2,6},{0,3,8},{0,3,9},{0,5,6},{0,7,10},{0,8,9},{1,3,6},{1,3,7},{1,4,5},{1,4,9},{1,5,9},{1,6,7},{1,8,10},{2,4,7},{2,4,8},{2,5,6},{2,7,8},{2,9,10},{3,5,10},{3,6,7},{3,8,9},{4,5,9},{4,6,10},{4,7,8}}, EntryMode => "nonbases")
-	) else error "Name string must be one of: U24, C5, P6, Q6, fano, nonfano, V8+, vamos, pappus, nonpappus, AG32, R9A, R9B, R10, betsyRoss"
+                matroid (id_((ZZ/2)^5)| matrix{{1,1,0,0,1},{1,1,1,0,0},{0,1,1,1,0},{0,0,1,1,1},{1,0,0,1,1}})
+	) else if name == "R12" then (
+                matroid (id_((ZZ/2)^6)| matrix{{1,1,1,0,0,0},{1,1,0,1,0,0},{1,0,0,0,1,0},{0,1,0,0,0,1},{0,0,1,0,1,1},{0,0,0,1,1,1}})
+	) else if name == "S8" then (
+                matroid (id_((ZZ/2)^4)| matrix{{0,1,1,1},{1,0,1,1},{1,1,0,1},{1,1,1,1}})
+	) else if name == "S5612" then (
+                matroid (id_((ZZ/3)^6)| matrix{{0,1,1,1,1,1},{1,0,1,-1,-1,1},{1,1,0,1,-1,-1},{1,-1,1,0,1,-1},{1,-1,-1,1,0,1},{1,1,-1,-1,1,0}})
+	) else if name == "T12" then (
+                matroid (id_((ZZ/2)^6)| matrix{{1,1,0,0,0,1},{1,0,0,0,1,1},{0,0,0,1,1,1},{0,0,1,1,1,0},{0,1,1,1,0,0},{1,1,1,0,0,0}})
+	) else error "Name string must be one of: fano, nonfano, nondesargues, vamos, pappus, nonpappus, AG32, F8, J, L8, O7, P6, P7, P8, P8=, R6, R8, R9, R10, R12, S8, S5612, T12, V8+"
 )
 
 allMatroids = method()
