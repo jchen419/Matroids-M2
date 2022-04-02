@@ -964,36 +964,15 @@ assert hasMinor(M, specificMatroid "V8+")
 assert Equation(2, #morphisms(foundation M, pasture k))
 ///
 
-TEST /// -- all rank 4 matroids on 8 elements with a type 2 pair in foundation
+TEST /// -- all matroids on <= 8 elements with a type 2 pair in foundation
+M = matroid(toList(0..<8), {{0,1,2},{4,0,3},{5,1,3},{6,2,3},{4,5,6},{4,1,7},{5,2,7}}, EntryMode => "nonbases")
+assert Equation(1, (pairTypes foundation M)#"type 2")
 r4n8 = select(allMatroids 8, M -> rank M == 4);
 type2 = apply({71,127,128,131,158,162,167,173,175,204,223,228,301,353}, i -> r4n8#i)
 assert all(type2, M -> (pairTypes foundation M)#"type 2" > 0)
+assert(areIsomorphic(foundation M, foundation type2#2) and areIsomorphic(foundation M, foundation type2#7) and areIsomorphic(foundation M, foundation type2#12))
+assert Equation(12, #isoTypes(type2/foundation))
 ///
-
--- Natural map from the foundation of minor
-
-hyperplaneCorrespondenceTable = method()
-hyperplaneCorrespondenceTable (Matroid, ZZ, String) := HashTable => (M, e, mode) -> (
-    N := if mode === "delete" then M \ set{e} else M / set{e};
-    (HM, HN) := (hyperplanes M, hyperplanes N);
-    hashTable apply(HN, h -> ( H := set apply(toList h, i -> if i<e then i else i+1); (h, if member(H, HM) then H else H + set{e})))
-)
-
-inducedMapFromMinor = method()
-inducedMapFromMinor (Matroid, ZZ, String) := PastureMorphism => (M, e, mode) -> (
-    N := if mode === "delete" then M \ set{e} else M / set{e};
-    F := foundation(M, Strategy => "hyperplanes");
-    G := foundation(N, Strategy => "hyperplanes");
-    (Fstar, Gstar) := (F.multiplicativeGroup, G.multiplicativeGroup);
-    H := hyperplaneCorrespondenceTable(M, e, mode);	
-    if numgens Fstar == 0 then pastureMorphism(G, F, map(Fstar, Gstar, 0)) else (
-    	inducedMinors := apply(sort(pairs G.cache#"genTable" /toList, last)/first/toList, U -> 1 + (F.cache#"genTable")#(set apply(U, h -> H#h)));
-    	B := id_(ZZ^(numgens Fstar))_{0};
-    	B = B | (F.cache#"pruningMap")_(inducedMinors | apply(inducedMinors, i -> i + F.cache#"numU24minors"));
-    	C := id_(ZZ^(numgens Gstar)) // (G.cache#"pruningMap");
-    	pastureMorphism(G, F, B*C)
-    )
-)
 
 -- Finding representation from pasture morphisms
 
@@ -1085,6 +1064,41 @@ M = matroid(toList(0..<6), {{0,1,2},{0,3,4},{1,3,5}}, EntryMode => "nonbases")
 assert not isPositivelyOrientable M
 ///
 
+-- Natural map from the foundation of minor
+
+hyperplaneCorrespondenceTable = method()
+hyperplaneCorrespondenceTable (Matroid, Matroid, ZZ) := HashTable => (M, N, e) -> (
+-- hyperplaneCorrespondenceTable (Matroid, ZZ, String) := HashTable => (M, e, mode) -> (
+    -- N := if mode === "delete" then M \ set{e} else M / set{e};
+    (HM, HN) := (hyperplanes M, hyperplanes N);
+    hashTable apply(HN, h -> ( H := set apply(toList h, i -> if i<e then i else i+1); (h, if member(H, HM) then H else H + set{e})))
+)
+
+inducedMapFromMinor = method()
+inducedMapFromMinor (Matroid, ZZ, String) := PastureMorphism => (M, e, mode) -> (
+    N := if mode === "delete" then M \ set{e} else M / set{e};
+    F := foundation(M, Strategy => "hyperplanes");
+    G := foundation(N, Strategy => "hyperplanes");
+    (Fstar, Gstar) := (F.multiplicativeGroup, G.multiplicativeGroup);
+    -- H := hyperplaneCorrespondenceTable(M, e, mode);
+    H := hyperplaneCorrespondenceTable(M, N, e);
+    if numgens Fstar == 0 then pastureMorphism(G, F, map(Fstar, Gstar, 0)) else (
+    	inducedMinors := apply(sort(pairs G.cache#"genTable" /toList, last)/first/toList, U -> 1 + (F.cache#"genTable")#(set apply(U, h -> H#h)));
+    	B := id_(ZZ^(numgens Fstar))_{0};
+    	B = B | (F.cache#"pruningMap")_(inducedMinors | apply(inducedMinors, i -> i + F.cache#"numU24minors"));
+    	C := id_(ZZ^(numgens Gstar)) // (G.cache#"pruningMap");
+    	pastureMorphism(G, F, B*C)
+    )
+)
+
+TEST ///
+Q6 = specificMatroid "Q6"
+assert areIsomorphic(Q6 / set{5}, uniformMatroid_2 5)
+assert Equation(-1, det inducedMapFromMinor(Q6, 5, "contract"))
+assert areIsomorphic(Q6 \ set{0}, uniformMatroid_3 5)
+assert Equation(-1, det inducedMapFromMinor(Q6, 0, "delete"))
+///
+
 -- (Quasi-)Fixed/cofixed elements
 
 isQuasiFixed = (M, e) -> coker (inducedMapFromMinor(M, e, "delete")).map == 0
@@ -1150,38 +1164,7 @@ M = specificMatroid "Q6"
 assert(coveringNumber(M, 1) == (3, true))
 ///
 
--- Special classes of matroids
-
-spike = method()
-spike (ZZ, List) := Matroid => (r, C3) -> (
-    E := toList(0..2*r);
-    C1 := toList apply(r, i -> {0, 2*i+1, 2*(i+1)});
-    C2 := apply(subsets(r, 2), p -> {2*p#0+1, 2*(p#0+1), 2*p#1+1, 2*(p#1+1)});
-    C := C1 | C2 | C3;
-    C4 := select(subsets(E, r+1), s -> not any(C, c -> isSubset(c, s)));
-    matroid(E, C | C4, EntryMode => "circuits")
-)
-spike ZZ := Matroid => r -> spike(r, {})
-
-swirl = method()
-swirl ZZ := Matroid => r -> (
-    E := toList(0..<2*r);
-    nonSpanningCircuits := (flatten flatten table(r, r-3, (i,j) -> (
-	v := toList apply(j, k -> 2*(i+k+1));
-	zChoices := toList((set{0,1})^**j/deepSplice/toList);
-	apply(zChoices, z -> {2*i, 2*i+1} | (z + v) | {2*(i+j+1), 2*(i+j+1)+1})
-    )))/(c -> c/(i -> i % (2*r)));
-    spanningCircuits := select(subsets(E, r+1), s -> not any(nonSpanningCircuits, c -> isSubset(c, s)));
-    matroid(E, nonSpanningCircuits | spanningCircuits, EntryMode => "circuits")
-)
-
-wheel = method()
-wheel ZZ := Matroid => r -> matroid wheelGraph (r+1)
-
-whirl = method()
-whirl ZZ := Matroid => r -> relaxation wheel(r+1)
-
--- Note: for wheels/whirls, computing foundations via Strategy => "hyperplanes" is faster, but the opposite is true for spikes/swirls
+-- Single-element representable extensions
 
 extinF4 = method()
 extinF4 (Matrix) := List => A -> (
@@ -1231,6 +1214,8 @@ N = matroid(toList(0..<8), {{0,1,2,3},{0,1,4,5},{2,3,4,5},{0,1,6,7},{2,3,6,7},{4
 GF 4; D = matrix{{1,0,0,1,a,1,0,a+1,1},{0,1,0,a,a,1,a,1,a+1},{0,0,1,0,1,1,1,1,1}}
 GF 4; D = matrix{{1,0,0,1,a+1,1,0,a,1},{0,1,0,a+1,a+1,1,a+1,1,a},{0,0,1,0,1,1,1,1,1}}
 M = matroid (matrix{{7:1}} || transpose matrix {{-3,0},{-3/4,-1},{3/2,-2},{-3/4,1},{3/2,2},{0,0},{3,0}}) -- Example 2.2 in paper
+
+-- Note: for wheels/whirls, computing foundations via Strategy => "hyperplanes" is faster, but the opposite is true for spikes/swirls
 
 -- a class of non-orientable matroids (Bland--Las-Vergnas, Orientability of Matroids, Ex. 3.11, https://www.sciencedirect.com/science/article/pii/0095895678900801)
 r = 6
