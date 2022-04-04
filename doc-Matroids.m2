@@ -48,6 +48,16 @@ doc ///
 			@TO matroid@.
 
 			{\bf Reference} Oxley, Matroid Theory, second edition. Oxford University Press, 2011.
+		Text
+			@SUBSECTION "Contributors"@
+		Text
+			The following people have generously contributed code, improved existing 
+			code, or enhanced the documentation:
+			Aaron Dall,
+			Chris Eur,
+			Matthew Mastroeni,
+			Jason McCullough,
+			Tianyi Zhang.
 ///
 
 doc ///
@@ -2977,11 +2987,11 @@ doc ///
 undocumented {
 	(net, Matroid),
 	ranks,
-	storedRepresentation,
+	-- storedRepresentation,
 	seriesConnection,
-	(seriesConnection, Matroid, Matroid),
+	-- (seriesConnection, Matroid, Matroid),
 	parallelConnection,
-	(parallelConnection, Matroid, Matroid),
-	sum2,
-	(sum2, Matroid, Matroid)
+	-- (parallelConnection, Matroid, Matroid)
+	sum2
+	-- (sum2, Matroid, Matroid)
 }
