@@ -125,6 +125,7 @@ specificPasture String := Pasture => name -> (
     else if name == "sign" then pasture(2*id1, id1, {{0*id1, 0*id1}})
     else error "specificPasture: Expected name to be one of: F1pm, F2, krasner, sign"
 )
+specificPasture Symbol := Pasture => s -> specificPasture toString s
 
 fiberProduct = method()
 fiberProduct (Matrix, Matrix) := Module => (f1, f2) -> (
@@ -927,7 +928,7 @@ assert Equation(1, #morphisms(G, pasture GF 5))
 
 TEST /// -- Betsy-Ross+
 k = GF 4
-BR = matrix {{1,0,0,1,1,1,1,1,1,1,1},{0,1,0,a,1,a+1,1,0,a+1,a+1,1},{0,0,1,a,a+1,1,0,a+1,a+1,a,a}} -- representation of Betsy-Ross
+BR = matrix {{1,0,0,1,1,1,1,1,1,1,1},{0,1,0,a,1,a+1,1,0,a+1,a+1,1},{0,0,1,a,a+1,1,0,a+1,a+1,a,a}} -- representation of Betsy-Ross over GF 4
 BRplus = matroid(BR | matrix{{1},{0},{1}})
 F = foundation(BRplus, Strategy => "hyperplanes", HasF7Minor => false, HasF7dualMinor => false)
 assert(F == pasture k)
@@ -967,7 +968,7 @@ assert Equation(2, #morphisms(foundation M, pasture k))
 TEST /// -- all matroids on <= 8 elements with a type 2 pair in foundation
 M = matroid(toList(0..<8), {{0,1,2},{4,0,3},{5,1,3},{6,2,3},{4,5,6},{4,1,7},{5,2,7}}, EntryMode => "nonbases")
 assert Equation(1, (pairTypes foundation M)#"type 2")
-r4n8 = select(allMatroids 8, M -> rank M == 4);
+r4n8 = allMatroids(8, 4);
 type2 = apply({71,127,128,131,158,162,167,173,175,204,223,228,301,353}, i -> r4n8#i)
 assert all(type2, M -> (pairTypes foundation M)#"type 2" > 0)
 assert(areIsomorphic(foundation M, foundation type2#2) and areIsomorphic(foundation M, foundation type2#7) and areIsomorphic(foundation M, foundation type2#12))
@@ -1066,8 +1067,9 @@ assert not isPositivelyOrientable M
 
 -- Natural map from the foundation of minor
 
-hyperplaneCorrespondenceTable = method()
-hyperplaneCorrespondenceTable (Matroid, Matroid, ZZ) := HashTable => (M, N, e) -> (
+-- hyperplaneCorrespondenceTable = method()
+hyperplaneCorrespondenceTable := (M, N, e) -> (
+-- hyperplaneCorrespondenceTable (Matroid, Matroid, ZZ) := HashTable => (M, N, e) -> (
 -- hyperplaneCorrespondenceTable (Matroid, ZZ, String) := HashTable => (M, e, mode) -> (
     -- N := if mode === "delete" then M \ set{e} else M / set{e};
     (HM, HN) := (hyperplanes M, hyperplanes N);
