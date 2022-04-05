@@ -1065,9 +1065,11 @@ specificMatroid String := Matroid => name -> (
 		matroid(id_((ZZ/2)^6) | matrix{{1,1,0,0,0,1},{1,0,0,0,1,1},{0,0,0,1,1,1},{0,0,1,1,1,0},{0,1,1,1,0,0},{1,1,1,0,0,0}})
 	) else error "specificMatroid: Name string must be one of: fano/F7, nonfano/F7-, vamos, pappus, nonpappus, nondesargues, betsyRoss, AG32, AG32', C5, F8, J, L8, O7, P6, P7, P8, P8=, R6, R8, R9, R9A, R9B, R10, R12, S8, S5612, T8, T12, U24, V8+"
 )
+specificMatroid Symbol := Matroid => s -> specificMatroid toString s
 
 allMatroids = method()
 allMatroids (ZZ, ZZ) := List => (n, r) -> (
+	if r > n then (n, r) = (r, n);
 	if r > n//2 then return allMatroids(n, n-r)/dual;
 	E := toList(0..<n);
 	if r == 0 then return {uniformMatroid(0, n)};
