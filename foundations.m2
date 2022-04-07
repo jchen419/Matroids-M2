@@ -304,7 +304,7 @@ kruskalSpanningForest Graph := Graph => G -> (
     ))
 )
 
-TEST ///
+TEST /// -- cf. https://github.com/Macaulay2/M2/issues/2403
 G = graph(toList(0..8), {{0,2},{0,4},{0,5},{0,7},{0,8},{1,2},{1,4},{1,5},{1,6},{1,7},{1,8},{3,4},{3,5},{3,6},{3,7},{3,8}})
 G = graph(toList(0..9), {{0,4},{1,4},{2,4},{3,4},{0,6},{5,6},{1,7},{5,7},{1,8},{2,8},{5,8},{1,9},{2,9},{3,9},{5,9}})
 assert isConnected G
@@ -324,8 +324,8 @@ foundation Matroid := Foundation => opts -> M -> (
         hypMap := hashTable apply(#hyperplanes M, i -> (hyperplanes M)#i => i);
         if dbgLevelStore > 5 then print("foundation: hypMap: " | net hypMap);
         indexOfHyp := h -> hypMap#h;
-        corank2flats := select(flats M, F -> rank_M F == r - 2);
-        corank3flats := select(flats M, F -> rank_M F == r - 3);
+        corank2flats := select(flats(M, 2), F -> rank_M F == r - 2);
+        corank3flats := select(flats(M, 3), F -> rank_M F == r - 3);
         if dbgLevelStore > 0 then << "foundation: Finding upper U(2,4) minors... " << flush;
         U24minors := flatten apply(corank2flats, F -> subsets(select(hyperplanes M, H -> isSubset(F, H)), 4));
         if dbgLevelStore > 0 then << #U24minors << " found." << endl;
@@ -408,6 +408,7 @@ foundation Matroid := Foundation => opts -> M -> (
         signPerm := s -> if det ((id_(ZZ^(#M_*)))_s)^(sort s) == 1 then 0 else 1;
         basesMap := hashTable apply(#bases M, i -> (bases M)#i => i+1);
         maxRankNonbases := select(nonbases M, N -> rank_M N == rank M - 1)/toList;
+        if dbgLevelStore > 0 then << "foundation: Numbers of bases: " << #basesMap << ". Computing trivial cross ratios..." << endl;
         trivialCrossRatios := matrix{flatten for N in maxRankNonbases list (
             C := toList fundamentalCircuit(M, set N, N#0);
             D := toList fundamentalCircuit(dual M, M.groundSet - N, last toList(M.groundSet - N));
@@ -428,10 +429,19 @@ foundation Matroid := Foundation => opts -> M -> (
         imDegMap := matrix({G_1} | apply(onePos, p -> G_(basesMap#(set B + set p - (set B*set p)))));
         (g, ch) = myMinPres (2*eps | trivialCrossRatios | imDegMap);
         eps = ch_{0} % g;
-        if dbgLevelStore > 0 then << "foundation: Finding embedded U24 minors... " << flush;
-        E := toList M.groundSet;
-        U := uniformMatroid(2,4);
-        U24minors = apply(allMinors(M, U), p -> {p#0, E - p#0 - p#1});
+        if dbgLevelStore > 0 then << "foundation: Finding upper U24 minors... " << flush;
+        potentialCorank2 := flats(M, 2);
+        IS := independentSets(M, r - 2);
+        corank2Table := hashTable delete(null, apply(potentialCorank2, F -> (
+            p := position(IS, I -> isSubset(I, F));
+            if p =!= null then (F, IS#p)
+        )));
+        U24minors = flatten apply(keys corank2Table, F -> (
+            apply(subsets(apply(select(hyperplanes M, H -> isSubset(F, H)), H -> first toList(H - F)), 4), s -> {corank2Table#F, sort s})
+        ));
+        -- E := toList M.groundSet;
+        -- U := uniformMatroid(2,4);
+        -- U24minors = apply(allMinors(M, U), p -> {p#0, E - p#0 - p#1});
         u = #U24minors;
         if dbgLevelStore > 0 then << u << " found. " << endl << "foundation: Generating hexagons..." << endl;
         hexes = hexesFromPairs(g, eps, apply(U24minors, p -> (
