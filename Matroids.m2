@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.4.7",
-	Date => "April 4, 2022",
+	Version => "1.4.8",
+	Date => "April 7, 2022",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -34,7 +34,6 @@ export {
 	"groundSet",
 	"indicesOf",
 	"bases",
-	"ranks",
 	"setRepresentation",
 	"storedRepresentation",
 	"nonbases",
@@ -136,7 +135,8 @@ matroid (List, List) := Matroid => opts -> (E, L) -> (
 		M.cache.circuits = L;
 	) else if opts.EntryMode == "nonbases" then M.cache.nonbases = L;
 	M.cache.groundSet = E;
-	M.cache.ranks = new MutableHashTable;
+	M.cache#"ranks" = new MutableHashTable;
+	M.cache#"flatsOfCorank" = new MutableHashTable from {0 => {G}};
 	M
 )
 matroid List := Matroid => opts -> B -> matroid(unique flatten B, B, opts)
@@ -289,7 +289,7 @@ isDependent (Matroid, Set) := Boolean => (M, S) -> (
 rank Matroid := ZZ => M -> M.rank
 rank (Matroid, List) := ZZ => (M, S) -> rank(M, set indicesOf(M, S))
 rank (Matroid, Set) := ZZ => (M, S) -> (
-	if M.cache.ranks#?S then M.cache.ranks#S else M.cache.ranks#S = (
+	if M.cache#"ranks"#?S then M.cache#"ranks"#S else M.cache#"ranks"#S = (
 		S0 := sort keys S;
 		if M.cache.?rankFunction then (M.cache.rankFunction)(S0)
 		else if #bases M > largeNumBases then (
@@ -321,16 +321,19 @@ closure (Matroid, Set) := Set => (M, S) -> (
 
 hyperplanes = method()
 hyperplanes Matroid := List => M -> (
-	if M.cache.?hyperplanes then M.cache.hyperplanes else M.cache.hyperplanes = (circuits dual M)/(c -> M.groundSet - c)
+	if M.cache.?hyperplanes then M.cache.hyperplanes else M.cache.hyperplanes = M.cache#"flatsOfCorank"#1 = (circuits dual M)/(c -> M.groundSet - c)
 )
 
 flats = method()
-flats (Matroid, ZZ) := List => (M, r) -> ( -- returns flats of rank r
-	if r > rank M or r < 0 then return {};
-	if r == rank M then return {M.groundSet};
-	if r == 0 then return {set loops M};
-	if r == rank M - 1 then return hyperplanes M;
-	unique (select(subsets(M.groundSet, r), s -> rank_M s == r)/closure_M)
+-- flats (Matroid, ZZ) := List => (M, r) -> ( -- returns flats of rank r
+	-- if r > rank M or r < 0 then return {};
+	-- if r == rank M then return {M.groundSet};
+	-- if r == 0 then return {set loops M};
+	-- if r == rank M - 1 then return hyperplanes M;
+	-- unique (select(subsets(M.groundSet, r), s -> rank_M s == r)/closure_M)
+-- )
+flats (Matroid, ZZ) := List => (M, r) -> ( -- computes all intersections of r hyperplanes (which contains all flats of rank = rank M - r)
+	if M.cache#"flatsOfCorank"#?r then M.cache#"flatsOfCorank"#r else M.cache#"flatsOfCorank"#r = unique flatten apply(flats(M, r-1), f -> apply(select(hyperplanes M, h -> not isSubset(f, h)), h -> h*f))
 )
 flats Matroid := List => M -> (
 	if M.cache.?flats then M.cache.flats else M.cache.flats = (
@@ -354,6 +357,11 @@ dual Matroid := Matroid => {} >> opts -> M -> (
 	if M.cache.?dual then M.cache.dual else M.cache.dual = (
 		D := matroid(M_*, (bases M)/(b -> M.groundSet - b));
 		D.cache.dual = M;
+		if M.cache.?storedRepresentation then (
+			(r, A) := (rank M, reducedRowEchelonForm M.cache.storedRepresentation);
+			if not submatrix(A, toList(0..<r), toList(0..<r)) == id_((ring A)^r) then print("dual: Warning: stored representation is not in standard form");
+			setRepresentation(D, (-1)*transpose submatrix'(A, toList(r..<numrows A), toList(0..<r)) | id_((ring A)^(#M_*-r)));
+		);
 		D
 	)
 )
@@ -398,8 +406,9 @@ hasMinor = method(Options => {Strategy => "flats"})
 hasMinor (Matroid, Matroid) := Boolean => opts -> (M, N) -> (
 	if opts.Strategy == "flats" and isSimple N then (
 		v := fVector N;
-		for f in select(flats M, f -> rank_M f == rank M - rank N) do (
-			if any(1..<rank N, i -> #select(flats M, F -> rank_M F == rank M - rank N + i and isSubset(f, F)) < v#i) then continue;
+		possibleFlats := flats(M, rank N);
+		for f in select(possibleFlats, f -> rank_M f == rank M - rank N) do (
+			if any(1..<rank N, i -> #select(possibleFlats, F -> rank_M F == rank M - rank N + i and isSubset(f, F)) < v#i) then continue;
 			if hasMinor(M/f, N, Strategy => "independentSets") then return true;
 		);
 	) else (
@@ -767,10 +776,8 @@ areIsomorphic (Matroid, Matroid) := Boolean => (M, N) -> (
 	if member(testResult, {null, "Could be isomorphic"}) then not(isomorphism(M, N) === null) else value testResult
 )
 
-tuttePolynomial Matroid := RingElement => M -> (
-	if M.cache.?tuttePolynomial then M.cache.tuttePolynomial else M.cache.tuttePolynomial = tuttePolynomial(M, ZZ(monoid(["x","y"]/getSymbol)))
-)
-tuttePolynomial (Matroid, Ring) := RingElement => (M, R) -> (
+tuttePolynomialRing := ZZ(monoid(["x","y"]/getSymbol))
+tuttePolynomial (Matroid, Ring) := RingElement => memoize((M, R) -> (
 	a := coloops M;
 	b := loops M;
 	if #a + #b == #M.groundSet then R_0^#a*R_1^#b
@@ -778,7 +785,8 @@ tuttePolynomial (Matroid, Ring) := RingElement => (M, R) -> (
 		c := set{(keys((bases M)#0 - a))#0};
 		tuttePolynomial(M \ c, R) + tuttePolynomial(M / c, R)
 	)
-)
+))
+tuttePolynomial Matroid := RingElement => M -> tuttePolynomial(M, tuttePolynomialRing)
 
 tutteEvaluate = method()
 tutteEvaluate (Matroid, Thing, Thing) := Thing => (M, a, b) -> (
@@ -864,9 +872,15 @@ getCycles = method()
 getCycles Graph := List => G -> (
 	if not isConnected G then return flatten((connectedComponents G)/(c -> getCycles inducedSubgraph(G, c)));
 	G = graph edges G; -- removes loops
-	if #edges G < #G.vertexSet then return {}; -- G is a tree
-	possibleVertices := select(G.vertexSet, v -> #neighbors(G, v) > 1);
-	if #possibleVertices < #G.vertexSet then G = inducedSubgraph(G, possibleVertices);
+	-- if #edges G < #G.vertexSet then return {}; -- G is a tree
+	-- possibleVertices := select(G.vertexSet, v -> #neighbors(G, v) > 1);
+	-- if #possibleVertices < #G.vertexSet then G = inducedSubgraph(G, possibleVertices);
+	while true do (
+		nonLeaves := select(G.vertexSet, v -> #neighbors(G, v) > 1);
+		if #nonLeaves == #G.vertexSet then break;
+		if #nonLeaves == 0 then return {};
+		G = inducedSubgraph(G, nonLeaves);
+	);
 	cycles := {};
 	while #G.vertexSet > 2 do (
 		cycles = join(cycles, select(getClosedWalks(G, G.vertexSet#0, #G.vertexSet), p -> p#1 < p#(#p - 2)));

@@ -2986,7 +2986,6 @@ doc ///
 
 undocumented {
 	(net, Matroid),
-	ranks,
 	-- storedRepresentation,
 	seriesConnection,
 	-- (seriesConnection, Matroid, Matroid),
