@@ -92,6 +92,19 @@ pasture (Array, String) := Pasture => (varArray, s) -> ( -- s should be a comma-
     pasture(G, eps, rels)
 )
 
+specificPasture = method()
+specificPasture String := Pasture => name -> (
+    id0 := id_(ZZ^0);
+    id1 := id_(ZZ^1);
+    z01 := map(ZZ^0, ZZ^1, 0);
+    if name == "F1pm" then pasture(2*id1, id1, {})
+    else if name == "F2" then pasture(id0, z01, {})
+    else if name == "krasner" then pasture(id0, z01, {{z01, z01}})
+    else if name == "sign" then pasture(2*id1, id1, {{0*id1, 0*id1}})
+    else error "specificPasture: Expected name to be one of: F1pm, F2, krasner, sign"
+)
+specificPasture Symbol := Pasture => s -> specificPasture toString s
+
 TEST ///
 assert areIsomorphic(pasture([], ""), specificPasture "F1pm")
 assert areIsomorphic(pasture([], "-1,-1-1"), specificPasture "krasner")
@@ -113,19 +126,6 @@ myMinPres Matrix := Sequence => A -> (
     (submatrix'(g,rows,cols),submatrix'(ch,rows,))
 )
 myMinPres Module := Sequence => M -> myMinPres presentation M
-
-specificPasture = method()
-specificPasture String := Pasture => name -> (
-    id0 := id_(ZZ^0);
-    id1 := id_(ZZ^1);
-    z01 := map(ZZ^0, ZZ^1, 0);
-    if name == "F1pm" then pasture(2*id1, id1, {})
-    else if name == "F2" then pasture(id0, z01, {})
-    else if name == "krasner" then pasture(id0, z01, {{z01, z01}})
-    else if name == "sign" then pasture(2*id1, id1, {{0*id1, 0*id1}})
-    else error "specificPasture: Expected name to be one of: F1pm, F2, krasner, sign"
-)
-specificPasture Symbol := Pasture => s -> specificPasture toString s
 
 fiberProduct = method()
 fiberProduct (Matrix, Matrix) := Module => (f1, f2) -> (
@@ -279,13 +279,22 @@ containmentTable := (LF,LH) -> hashTable apply(LH, h -> set select(LF, f -> isSu
 
 hexesFromPairs = method()
 hexesFromPairs (Matrix, Matrix, List) := List => (A, eps, L) -> (
-    hexList := {};
-    for p in L do (
+    hexTable := new MutableHashTable;
+    for p in L list (
         fp := {p#0 % A, p#1 % A};
-        if any(hexList, h -> compareHex(fp, h)) then continue;
-        hexList = append(hexList, {fp, {(-fp#1) % A, (eps + fp#0 - fp#1) % A}, {(-fp#0) % A, (eps - fp#0 + fp#1) % A}});
-    );
-    hexList
+        if hexTable#?(set fp) then continue;
+        h := {fp, {(-fp#1) % A, (eps + fp#0 - fp#1) % A}, {(-fp#0) % A, (eps - fp#0 + fp#1) % A}};
+        scan(h, pair -> hexTable#(set pair) = 1);
+        h
+    )
+    -- Old version
+    -- hexList := {};
+    -- for p in L do (
+        -- fp := {p#0 % A, p#1 % A};
+        -- if any(hexList, h -> compareHex(fp, h)) then continue;
+        -- hexList = append(hexList, {fp, {(-fp#1) % A, (eps + fp#0 - fp#1) % A}, {(-fp#0) % A, (eps - fp#0 + fp#1) % A}});
+    -- );
+    -- hexList
 )
 
 compareHex = method()
@@ -348,7 +357,7 @@ foundation Matroid := Foundation => opts -> M -> (
             )
         );
         if dbgLevelStore > 0 then print "foundation: Detecting dual Fano minor...";
-        if not F7dualKnown then for F in select(flats M, f -> rank_M f == r - 4) do (
+        if not F7dualKnown then for F in select(flats(M, 4), f -> rank_M f == r - 4) do (
             if #select(corank3flats, F3 -> isSubset(F, F3)) < 7 then continue;
             if #select(corank2flats, F2 -> isSubset(F, F2)) < 21 then continue;
             if #select(hyperplanes M, H -> isSubset(F, H)) < 14 then continue;
@@ -430,9 +439,8 @@ foundation Matroid := Foundation => opts -> M -> (
         (g, ch) = myMinPres (2*eps | trivialCrossRatios | imDegMap);
         eps = ch_{0} % g;
         if dbgLevelStore > 0 then << "foundation: Finding upper U24 minors... " << flush;
-        potentialCorank2 := flats(M, 2);
         IS := independentSets(M, r - 2);
-        corank2Table := hashTable delete(null, apply(potentialCorank2, F -> (
+        corank2Table := hashTable delete(null, apply(flats(M, 2), F -> (
             p := position(IS, I -> isSubset(I, F));
             if p =!= null then (F, IS#p)
         )));
@@ -656,12 +664,13 @@ fundEltPartners (List, Thing) := List => (L, A) -> (
     unique for p in L list if p#0 === A then p#1 else if p#1 === A then p#0 else continue
 )
 fundEltPartners (Pasture, Thing) := List => (P, e) -> (
-    H := if P.cache#?"partnerTable" then P.cache#"partnerTable" else P.cache#"partnerTable" = (
+    if not P.cache#?"partnerTable" then P.cache#"partnerTable" = (
+    -- H := if P.cache#?"partnerTable" then P.cache#"partnerTable" else P.cache#"partnerTable" = (
         FP := unique flatten P.hexagons;
         FE := unique flatten FP;
         hashTable apply(FE, e -> e => fundEltPartners(FP, e))
     );
-    if H#?e then H#e else {}
+    if P.cache#"partnerTable"#?e then P.cache#"partnerTable"#e else {}
 )
 
 hexTypes = method()
@@ -690,11 +699,14 @@ pairTypes Pasture := HashTable => P -> (
 fullRankSublattice = method()
 fullRankSublattice Pasture := List => P -> (
     if P.cache#?"sublattice" then P.cache#"sublattice" else P.cache#"sublattice" = (
+        dbgLevelStore := debugLevel;
+        debugLevel = 0;
         n := numrows presentation P.multiplicativeGroup;
         freePart := freePartPasture P;
         torsPart := toList(0..<n) - set freePart;
         S := {}; -- list of lists of type 4 hexagons
         s := rank (matrix{flatten(P.hexagons/first)})^freePart;
+        if dbgLevelStore > 0 then << "fullRankSublattice: Finding rank " << s << " sublattice..." << endl;
         currentPairs := {};
         while true do (
             A := if #currentPairs == 0 then map(ZZ^n,ZZ^0,0) else matrix{flatten(currentPairs/first/last)};
@@ -720,6 +732,7 @@ fullRankSublattice Pasture := List => P -> (
             currentPairs = append(currentPairs, newPair);
         );
         S = append(S, P.hexagons - set(currentPairs/last) - set flatten S);
+        if dbgLevelStore > 0 then << "fullRankSublattice: Sublattice found. Creating generating rules..." << endl;
         G := currentPairs/first;
         g := #freePart;
         L := if g == 0 then map(ZZ^n, ZZ^0, 0) else matrix{flatten for i to #G-1 list if G#i#0#2 == 1 + G#i#0#1 then G#i#1 else G#i#1#1};
@@ -757,6 +770,7 @@ fullRankSublattice Pasture := List => P -> (
         P.cache#"otherPairs" = otherPairs; -- pairs not contained in lattice L (i.e. abs(coeff) > 1)
         P.cache#"type4Data" = type4Data;
         P.cache#"quotientLattice" = minPres coker(L^freePart);
+        debugLevel = dbgLevelStore;
         G
     )
 )
@@ -770,6 +784,7 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     fundPairsP2 := unique flatten P2.hexagons;
     fundEltsP2 := unique flatten fundPairsP2;
     fundPairsP2unordered := unique(fundPairsP2 | fundPairsP2/reverse);
+    fundPairsP2unorderedSet := set(fundPairsP2unordered/set);
     fundPairsP2set := set(fundPairsP2/set);
     if opts.FindIso then (
         if not(#P1.hexagons == #P2.hexagons and #fundEltsP1 == #fundEltsP2 and P1star == P2star) then (
@@ -827,7 +842,8 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                 C0 = C0 | candidates#level#0;
                 rule := last generatingRules#level;
                 newCandidates := if rule === 0 then fundEltsP2 -- first member of type 3
-                else if rule === 1 then fundEltPartners(fundPairsP2, candidates#level#0) -- second member of type 3
+                -- else if rule === 1 then fundEltPartners(fundPairsP2, candidates#level#0) -- second member of type 3
+                else if rule === 1 then fundEltPartners(P2, candidates#level#0) -- second member of type 3
                 else ( -- type 1/2 pairs
                     coeff := flatten entries rule;
                     isType2Pair := #coeff == level+2;
@@ -845,7 +861,10 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                         data := type4Data#(level+1)#i;
                         torsPair := torsType4#(level+1)#i;
                         v := set apply(2, j -> ((C0 | c)*data#j#1 - torsPair#j) % P2star);
+                        if data#0#2 == 1 and data#1#2 == 1 then member(v, fundPairsP2unorderedSet) else ( 
+                        << "morphisms: Coefficient for type 4 pair not equal to 1" << endl;
                         any(fundPairsP2unordered, p -> set{p#0*data#0#2 % P2star, p#1*data#1#2 % P2star} === v)
+                        )
                     ))
                 ));
                 level = level + 1;
@@ -1387,7 +1406,6 @@ set includedIndices
 -- Handle quotient by full rank sublattice correctly
 -- Minimize recomputation of foundation with different Strategy values
 -- inducedMapFromMinor with Strategy => "bases"
--- speed up U24 minor computation in Strategy => "bases" using Scum Theorem
 
 restart
 load "foundations.m2"
