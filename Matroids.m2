@@ -507,7 +507,7 @@ singleElementExtension (Matroid, List) := Matroid => o -> (M, K) -> (
     B := bases M;
     r := rank M;
     B' := select(hyperplanes M, H -> not (set K')#?H );
-    B' = flatten apply(B', H -> select(B, b -> #(b*H) == r - 1 ) );
+    B' = flatten apply(B', H -> apply(select(B, b -> #(b*H) == r - 1 ), b -> b*H ) );
     B' = apply(B', I -> I + set {e});
     matroid(E|{e}, B|B')
 )
@@ -527,7 +527,7 @@ singleElementExtension (Matroid, Set) := Matroid => o -> (M, F) -> (
     B := bases M;
     r := rank M;
     B' := select(hyperplanes M, H -> not isSubset(F, H) );
-    B' = flatten apply(B', H -> select(B, b -> #(b*H) == r - 1 ) );
+    B' = flatten apply(B', H -> apply(select(B, b -> #(b*H) == r - 1 ), b -> b*H ) );
     B' = apply(B', I -> I + set {e});
     matroid(E|{e}, B|B')
 )
