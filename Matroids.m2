@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.4.8",
-	Date => "April 7, 2022",
+	Version => "1.4.9",
+	Date => "April 19, 2022",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -35,6 +35,7 @@ export {
 	"indicesOf",
 	"bases",
 	"setRepresentation",
+	"getRepresentation",
 	"storedRepresentation",
 	"nonbases",
 	"circuits",
@@ -67,7 +68,6 @@ export {
 	"modularCut",
 	"isModularCut",
 	"relaxation",
-	"representationOf",
 	"relabel",
 	"quickIsomorphismTest",
 	"getIsos",
@@ -102,8 +102,6 @@ export {
 Matroid = new Type of HashTable
 Matroid.synonym = "matroid"
 
-largeNumBases := 0
-
 globalAssignment Matroid
 net Matroid := M -> (
 	net ofClass class M | " of rank " | toString(M.rank) | " on " | toString(#M.groundSet) | " elements"
@@ -116,10 +114,10 @@ matroid (List, List) := Matroid => opts -> (E, L) -> (
 	if #L > 0 and not instance(L#0, Set) then L = indicesOf(E, L);
 	G := set(0..<#E);
 	B := if opts.EntryMode == "nonbases" then if #L == 0 then {G} else subsets(G, #(L#0)) - set L
-	else if opts.EntryMode == "bases" then if #L == 0 then error "matroid(List, List): There must be at least one basis" else L
+	else if opts.EntryMode == "bases" then if #L == 0 then error "matroid: There must be at least one basis" else L
 	else if opts.EntryMode == "circuits" then (
 		x := getSymbol "x";
-		R := QQ(monoid [x_0..x_(#E-1)]);
+		R := QQ(monoid[x_0..x_(#E-1)]);
 		I := monomialIdeal({0_R} | L/(c -> product(c/(i -> R_i))));
 		allVars := product gens R;
 		(dual I)_* / (g -> set indices(allVars//g))
@@ -128,15 +126,12 @@ matroid (List, List) := Matroid => opts -> (E, L) -> (
 		symbol groundSet => G,
 		symbol bases => B,
 		symbol rank => #(B#0),
-		cache => new CacheTable
+		cache => new CacheTable from {symbol groundSet => E}
 	};
 	if opts.EntryMode == "circuits" then (
 		M.cache.ideal = I;
 		M.cache.circuits = L;
 	) else if opts.EntryMode == "nonbases" then M.cache.nonbases = L;
-	M.cache.groundSet = E;
-	M.cache#"ranks" = new MutableHashTable;
-	M.cache#"flatsOfCorank" = new MutableHashTable from {0 => {G}};
 	M
 )
 matroid List := Matroid => opts -> B -> matroid(unique flatten B, B, opts)
@@ -167,7 +162,7 @@ matroid Ideal := Matroid => opts -> I -> (
 	J := if instance(I, MonomialIdeal) then I else monomialIdeal I;
 	-- The following is ~2x faster than isSquareFree
 	if (J == I and isSubset(set flatten flatten(J_*/exponents), set{0,1})) then matroid(gens ring J, J)
-	else error "matroid(Ideal): Expected a squarefree monomial ideal"
+	else error "matroid: Expected a squarefree monomial ideal"
 )
 
 setRepresentation = method()
@@ -175,6 +170,13 @@ setRepresentation (Matroid, Matrix) := Matroid => (M, A) -> (
 	M.cache.storedRepresentation = A;
 	M.cache.rankFunction = S -> rank A_S;
 	M
+)
+
+getRepresentation = method()
+getRepresentation Matroid := Thing => M -> (
+	if M.cache.?graph then graph(join(M_*, (flatten(select(M_*, c -> #c == 1)/toList))/(v -> {v,v})))
+	else if M.cache.?storedRepresentation then M.cache.storedRepresentation
+	else ( printerr("getRepresentation: No representation stored"); null )
 )
 
 ideal Matroid := MonomialIdeal => M -> ( -- Stanley-Reisner ideal of independence complex
@@ -197,21 +199,21 @@ isWellDefined Matroid := Boolean => M -> (
 		if debugLevel > 0 then (
 			added := toList(K - expectedKeys);
 			missing := toList(expectedKeys - K);
-			if #added > 0 then << "isWellDefined: -- unexpected key(s): " << toString added << endl;
-			if #missing > 0 then << "isWellDefined: -- missing keys(s): " << toString missing << endl;
+			if #added > 0 then printerr("isWellDefined: unexpected key(s): " | toString added);
+			if #missing > 0 then printerr("isWellDefined: missing keys(s): " | toString missing);
 		);
 		return false
 	);
 	if not M.groundSet === set(0..<#M.groundSet) then (
-		if debugLevel > 0 then << "isWellDefined: -- expected groundSet to be a set of integers" << endl;
+		if debugLevel > 0 then printerr("isWellDefined: expected groundSet to be " | toString set(0..<#M.groundSet));
 		return false
 	);
 	if not (instance(M.bases, List) and all(bases M, b -> instance(b, Set) and isSubset(b, M.groundSet))) then (
-		if debugLevel > 0 then << "isWellDefined: -- expected bases to be a list of subsets of groundSet" << endl;
+		if debugLevel > 0 then printerr("isWellDefined: expected bases to be a list of subsets of groundSet");
 		return false
 	);
 	if not all(M.bases, b -> #b === M.rank) then (
-		if debugLevel > 0 then << "isWellDefined: -- expected rank to be the size of all bases" << endl;
+		if debugLevel > 0 then printerr("isWellDefined: expected rank to be the size of all bases");
 		return false
 	);
 	 -- circuit elimination
@@ -240,10 +242,7 @@ indicesOf (Matroid, List) := List => (M, L) -> (
 	if #L == 0 then return {};
 	if not M.cache.?indices then M.cache.indices = hashTable apply(#M.groundSet, i -> M_i => i);
 	if not M.cache.indices#?(L#0) then (
-		if debugLevel > 0 then (
-			print("indicesOf: Warning: " | toString(L#0) | " is not a member of " | toString(M_*));
-			print("indicesOf: Treating " | toString(L#0) | " as an index (cf. 'help groundSet' for how to input subsets) ...");
-		);
+		if debugLevel > 0 then printerr("indicesOf: " | toString(L#0) | " is not a member of " | toString(M_*) | ". Treating " | toString(L#0) | " as an index (cf. 'help groundSet') ...");
 		L
 	) else L/(l -> M.cache.indices#l)
 )
@@ -277,6 +276,8 @@ coloops Matroid := List => M -> loops dual M
 
 independentSets Matroid := List => opts -> M -> unique flatten((bases M)/subsets)
 independentSets (Matroid, ZZ) := List => opts -> (M, r) -> unique flatten(bases M/(b -> subsets(b, r)))
+independentSets (Matroid, List) := List => opts -> (M, S) -> independentSets(M, set indicesOf(M, S))
+independentSets (Matroid, Set) := List => opts -> (M, S) -> bases restriction(M, S)
 
 isDependent = method()
 isDependent (Matroid, List) := Boolean => (M, S) -> isDependent(M, set indicesOf(M, S))
@@ -289,20 +290,13 @@ isDependent (Matroid, Set) := Boolean => (M, S) -> (
 rank Matroid := ZZ => M -> M.rank
 rank (Matroid, List) := ZZ => (M, S) -> rank(M, set indicesOf(M, S))
 rank (Matroid, Set) := ZZ => (M, S) -> (
+	if not M.cache#?"ranks" then M.cache#"ranks" = new MutableHashTable;
 	if M.cache#"ranks"#?S then M.cache#"ranks"#S else M.cache#"ranks"#S = (
 		S0 := sort keys S;
 		if M.cache.?rankFunction then (M.cache.rankFunction)(S0)
-		else if #bases M > largeNumBases then (
+		else (
 			I := ideal M; R := ring I;
 			dim (map((coefficientRing R)(monoid [(gens R)_S0]), R))(I)
-		) else (
-			currentRank := 0;
-			maxRank := min(#S, rank M);
-			for b in bases M do (
-				currentRank = max(currentRank, #(b*S));
-				if currentRank == maxRank then break;
-			);
-			currentRank
 		)
 	)
 )
@@ -312,28 +306,18 @@ closure (Matroid, List) := List => (M, S) -> toList closure(M, set indicesOf(M, 
 closure (Matroid, Set) := Set => (M, S) -> (
 	r := rank(M, S);
 	if r == rank M then return M.groundSet;
-	limits := set{};
-	for s in toList(M.groundSet - S) do (
-		if r == rank(M, S + set{s}) then limits = limits + set{s};
-	);
-	S + limits
+	S + set select(toList(M.groundSet - S), s -> r == rank(M, S + set{s}))
 )
 
 hyperplanes = method()
 hyperplanes Matroid := List => M -> (
-	if M.cache.?hyperplanes then M.cache.hyperplanes else M.cache.hyperplanes = M.cache#"flatsOfCorank"#1 = (circuits dual M)/(c -> M.groundSet - c)
+	if M.cache.?hyperplanes then M.cache.hyperplanes else M.cache.hyperplanes = (circuits dual M)/(c -> M.groundSet - c)
 )
 
 flats = method()
--- flats (Matroid, ZZ) := List => (M, r) -> ( -- returns flats of rank r
-	-- if r > rank M or r < 0 then return {};
-	-- if r == rank M then return {M.groundSet};
-	-- if r == 0 then return {set loops M};
-	-- if r == rank M - 1 then return hyperplanes M;
-	-- unique (select(subsets(M.groundSet, r), s -> rank_M s == r)/closure_M)
--- )
 flats (Matroid, ZZ) := List => (M, r) -> ( -- computes all intersections of r hyperplanes (which contains all flats of rank = rank M - r)
-	if M.cache#"flatsOfCorank"#?r then M.cache#"flatsOfCorank"#r else M.cache#"flatsOfCorank"#r = unique flatten apply(flats(M, r-1), f -> apply(select(hyperplanes M, h -> not isSubset(f, h)), h -> h*f))
+	if not M.cache#?"flatsOfCorank" then M.cache#"flatsOfCorank" = new MutableHashTable from {0 => {M.groundSet}, 1 => hyperplanes M};
+	if M.cache#"flatsOfCorank"#?r then M.cache#"flatsOfCorank"#r else M.cache#"flatsOfCorank"#r = unique flatten apply(flats(M, r-1), f -> apply(hyperplanes M, h -> h*f))
 )
 flats Matroid := List => M -> (
 	if M.cache.?flats then M.cache.flats else M.cache.flats = (
@@ -357,10 +341,12 @@ dual Matroid := Matroid => {} >> opts -> M -> (
 	if M.cache.?dual then M.cache.dual else M.cache.dual = (
 		D := matroid(M_*, (bases M)/(b -> M.groundSet - b));
 		D.cache.dual = M;
-		if M.cache.?storedRepresentation then (
+		if M.cache.?storedRepresentation then try (
 			(r, A) := (rank M, reducedRowEchelonForm M.cache.storedRepresentation);
-			if not submatrix(A, toList(0..<r), toList(0..<r)) == id_((ring A)^r) then print("dual: Warning: stored representation is not in standard form");
-			setRepresentation(D, (-1)*transpose submatrix'(A, toList(r..<numrows A), toList(0..<r)) | id_((ring A)^(#M_*-r)));
+			pivs := hashTable((a,b) -> a, pivots A);
+			nonpivs := sort toList(M.groundSet - values pivs);
+			perm := inversePermutation(apply(r, i -> pivs#i) | nonpivs);
+			setRepresentation(D, ((-1)*transpose submatrix(A, toList(0..<r), nonpivs) | id_((ring A)^(#M_*-r)))_perm);
 		);
 		D
 	)
@@ -370,10 +356,7 @@ restriction = method()
 restriction (Matroid, List) := Matroid => (M, S) -> restriction(M, set indicesOf(M, S))
 restriction (Matroid, Set) := Matroid => (M, S) -> ( -- assumes S is a subset of M.groundSet (not M_*)
 	S0 := sort keys S;
-	matroid(M_S0, if #bases M > largeNumBases then (
-		I := ideal M; R := ring I;
-		monomialIdeal (map((coefficientRing R)(monoid [(gens R)_(S0)]), R))(I)
-	) else (
+	matroid(M_S0, (
 		B := bases M/(b -> S*b);
 		r := max sizes B;
 		indicesOf(S0, unique select(B, b -> #b == r) /toList)
@@ -381,6 +364,7 @@ restriction (Matroid, Set) := Matroid => (M, S) -> ( -- assumes S is a subset of
 )
 Matroid | Set := (M, S) -> restriction(M, S)
 Matroid | List := (M, S) -> restriction(M, S)
+-- Note: for tuttePolynomial, do not use ideal M to compute restriction!
 
 deletion = method()
 deletion (Matroid, List) := Matroid => (M, S) -> deletion(M, set indicesOf(M, S))
@@ -404,21 +388,27 @@ minor (Matroid, Set, Set) := Matroid => (M, X, Y) -> (
 
 hasMinor = method(Options => {Strategy => "flats"})
 hasMinor (Matroid, Matroid) := Boolean => opts -> (M, N) -> (
-	if opts.Strategy == "flats" and isSimple N then (
+	(n, m) := (#N.groundSet, #M.groundSet);
+	if n > m or rank N > rank M or #bases N > #bases M then return false;
+	if opts.Strategy === "flats" and isSimple N then (
 		v := fVector N;
 		possibleFlats := flats(M, rank N);
 		for f in select(possibleFlats, f -> rank_M f == rank M - rank N) do (
 			if any(1..<rank N, i -> #select(possibleFlats, F -> rank_M F == rank M - rank N + i and isSubset(f, F)) < v#i) then continue;
-			if hasMinor(M/f, N, Strategy => "independentSets") then return true;
+			Mf := M/f;
+			for Y in independentSets(dual Mf, m - n - #f) do (
+				if areIsomorphic(N, Mf \ Y) then (
+					if debugLevel > 0 then printerr("hasMinor: Contract "|toString f|", delete "|toString (Y/(y -> (sort toList(M.groundSet - f))#y)));
+					return true;
+				);
+			);
 		);
 	) else (
-		(n, m) := (#N.groundSet, #M.groundSet);
-		if n > m or #bases N > #bases M then return false;
 		for X in independentSets(M, rank M - rank N) do (
 			MX := M / X;
 			for Y in independentSets(dual MX, m - n - rank M + rank N) do (
 				if areIsomorphic(N, MX \ Y) then (
-					if debugLevel > 0 then print("hasMinor: Contract "|toString X|", delete "|toString (Y/(y -> (sort toList(M.groundSet - X))#y)));
+					if debugLevel > 0 then printerr("hasMinor: Contract "|toString X|", delete "|toString (Y/(y -> (sort toList(M.groundSet - X))#y)));
 					return true;
 				);
 			);
@@ -449,13 +439,10 @@ Matroid + Matroid := (M, N) -> (
 Matroid ++ Matroid := (M, N) -> (
 	n := #M.groundSet;
 	B := bases N/(b -> b/(i -> i + n));
-	E1 := (M_*)/(e -> (e, 0));
-	E2 := (N_*)/(e -> (e, 1));
-	matroid(E1 | E2, unique flatten table(bases M, B, plus))
+	matroid(M_*/(e -> (e,0)) | N_*/(e -> (e,1)), unique flatten table(bases M, B, plus))
 )
 
-getComponentsRecursive = method()
-getComponentsRecursive (List, List) := List => (S, C) -> (
+getComponentsRecursive := (S, C) -> (
 	if #S == 0 then return {}
 	else if #(set S*set flatten(C/toList)) == 0 then return subsets(S, 1);
 	comp0 := select(S, s -> any(C, c -> isSubset(set{s, S#0}, c)));
@@ -469,7 +456,7 @@ components Matroid := List => M -> (
 
 isConnected Matroid := Boolean => M -> (
 	I := ideal dual M;
-		if #I_* > #(ideal M)_* then I = ideal M;
+	if #I_* > #(ideal M)_* then I = ideal M;
 	all(subsets(gens ring I, 2)/product, p -> any(I_*, g -> g % p == 0) )
 )
 
@@ -478,13 +465,12 @@ is3Connected Matroid := Boolean => M -> isConnected M and getSeparation(M, 2) ==
 
 getSeparation = method()
 getSeparation (Matroid, ZZ) := Set => (M, k) -> (
-	-- if k < 2 then error "getSeparation: Expected k >= 2 - use components(M) to find 1-separators.";
-	if k > #M_*/2 then ( print "getSeparation: No k-separation exists for size reasons"; return null );
-	if debugLevel > 0 then print "getSeparation: Checking existence of minimal k-separator...";
+	if k > #M_*/2 then ( if debugLevel > 0 then printerr "getSeparation: No k-separation exists for size reasons"; return null );
+	if debugLevel > 0 then printerr "getSeparation: Checking existence of minimal k-separator...";
 	indepCocircs := select(circuits dual M, c -> #c == k and not isDependent(M, c));
 	coindepCircs := select(circuits M, c -> #c == k and not isDependent(dual M, c));
 	for X in indepCocircs | coindepCircs do if rank(M, X) + rank(dual M, X) - k <= k-1 then return X;
-	if debugLevel > 0 then print "getSeparation: Checking existence of nonminimal k-separator...";
+	if debugLevel > 0 then printerr "getSeparation: Checking existence of nonminimal k-separator...";
 	flatsCoflats := toList(set flats M * set flats dual M);
 	sepCands := reverse sort(select(flatsCoflats, X -> #X > k and #X < #M_* - k), f -> #f);
 	for X in sepCands do if rank(M, X) + rank(dual M, X) - #X <= k-1 then return X;
@@ -492,7 +478,7 @@ getSeparation (Matroid, ZZ) := Set => (M, k) -> (
 )
 
 seriesConnection = method()
-seriesConnection (Matroid, Matroid) := Matroid => (M, N) -> ( -- assume basepoint of 0
+seriesConnection (Matroid, Matroid) := Matroid => (M, N) -> ( -- assumes basepoint of 0
 	if member(0, loops M) then return (M / set{0}) ++ N;
 	if member(0, coloops M) then M ++ (N \ set{0});
 	n := #M_*;
@@ -511,6 +497,11 @@ sum2 (Matroid, Matroid) := Matroid => (M, N) -> (
 	if member(0, loops M | loops N | coloops M | coloops N) then error "sum2: Expected basepoint 0 to not be a coloop in both M and N";
 	seriesConnection(M, N) / set{0}
 )
+
+isSimple Matroid := Boolean => M -> min sizes circuits M > 2
+
+simpleMatroid = method()
+simpleMatroid Matroid := Matroid => M -> M \ set(select((ideal M)_*, m -> first degree m <= 2)/indices/last)
 
 -- (CO)EXTENSIONS
 -----------------------------------------------------------------
@@ -665,15 +656,6 @@ relaxation (Matroid, Set) := Matroid => opts -> (M, S) -> (
 )
 relaxation Matroid := Matroid => opts -> M -> relaxation(M, first toList(set circuits M * set hyperplanes M))
 
-representationOf = method()
-representationOf Matroid := Thing => M -> (
-	if M.cache.?graph then (
-	-- if all(M_*, c -> instance(c, Set) and #c <= 2) then (
-		graph(join(M_*, (flatten(select(M_*, c -> #c == 1)/toList))/(v -> {v,v})))
-	) else if M.cache.?storedRepresentation then M.cache.storedRepresentation
-	else ( << "representationOf: No representation stored" << endl; null )
-)
-
 relabel = method()
 relabel (Matroid, HashTable) := Matroid => (M, perm) -> (
 	if set keys perm =!= set values perm then error "relabel: Not a permutation!";
@@ -757,9 +739,9 @@ quickIsomorphismTest = method()
 quickIsomorphismTest (Matroid, Matroid) := String => (M, N) -> (
 	(r, b, e) := (rank M, #bases M, #M.groundSet);
 	if not (r == rank N and b == #bases N and e == #N.groundSet) then return "false";
-	if M == N then ( if debugLevel > 0 then print "quickIsomorphismTest: Matroids are equal"; return "true" );
+	if M == N then ( if debugLevel > 0 then printerr "quickIsomorphismTest: Matroids are equal"; return "true" );
 	if not(betti ideal M === betti ideal N) then return "false";
-	if min(b, binomial(e, r) - b) <= 1 then ( if debugLevel > 0 then print "quickIsomorphismTest: At most 1 basis/nonbasis"; return "true" );
+	if min(b, binomial(e, r) - b) <= 1 then ( if debugLevel > 0 then printerr "quickIsomorphismTest: At most 1 basis/nonbasis"; return "true" );
 	try (
 		alarm 2; 
 		ret := if not betti res dual ideal M === betti res dual ideal N then "false";
@@ -806,75 +788,11 @@ chromaticPolynomial Graph := RingElement => G -> (
 	(ring P)_0^(#connectedComponents G)*P
 )
 
-isSimple Matroid := Boolean => M -> min sizes circuits M > 2
-
-simpleMatroid = method()
-simpleMatroid Matroid := Matroid => M -> M \ set(select((ideal M)_*, m -> first degree m <= 2)/indices/last)
-
-uniformMatroid = method()
-uniformMatroid (ZZ, ZZ) := Matroid => (k, n) -> (
-	if k > n then (k,n) = (n,k);
-	matroid(toList(0..<n), subsets(n, k)/set)
-)
-
-affineGeometry = method()
-affineGeometry (ZZ, ZZ) := Matroid => (n, p) -> matroid affineMatrix(n, p)
-
-affineMatrix = (n, p) -> sub(transpose matrix toList((prepend(1,n:0)..prepend(1,n:p-1))/toList), ZZ/p)
-
-projectiveGeometry = method()
-projectiveGeometry (ZZ, ZZ) := Matroid => (n, p) -> matroid projectiveMatrix(n, p)
-
-projectiveMatrix = (n, p) -> (
-	if n == 0 then return matrix{{1_(ZZ/p)}};
-	affineMatrix(n, p) | (matrix{toList((p^n-1)//(p-1):0_(ZZ/p))} || projectiveMatrix(n-1, p))
-)
-
-thetaMatroid = method()
-thetaMatroid ZZ := Matroid => n -> (
-	(X, Y) := (toList(0..<n), toList(n..<2*n));
-	matroid(X | Y, ({X} | delete(null, flatten table(n, n, (i,j) -> if i =!= j then (X | {Y#i}) - set{j})) | flatten table(subsets(X, n-2), subsets(Y, 2), (s,t) -> s | t))/set)
-)
-
-binarySpike = method() -- unique binary tipped r-spike
-binarySpike ZZ := Matroid => r -> matroid(id_((ZZ/2)^r) | matrix table(r, r+1, (i,j) -> if i == j then 0 else 1))
-
-spike = method()
-spike (ZZ, List) := Matroid => (r, C3) -> ( -- tipped r-spike
-	E := toList(0..2*r);
-	C1 := toList apply(r, i -> {0, 2*i+1, 2*(i+1)});
-	C2 := apply(subsets(r, 2), p -> {2*p#0+1, 2*(p#0+1), 2*p#1+1, 2*(p#1+1)});
-	C := C1 | C2 | C3;
-	C4 := select(subsets(E, r+1), s -> not any(C, c -> isSubset(c, s)));
-	matroid(E, C | C4, EntryMode => "circuits")
-)
-spike ZZ := Matroid => r -> spike(r, {}) -- free tipped r-spike
-
-swirl = method()
-swirl ZZ := Matroid => r -> ( -- free rank-r swirl
-	E := toList(0..<2*r);
-	nonSpanningCircuits := (flatten flatten table(r, r-3, (i,j) -> (
-		v := toList apply(j, k -> 2*(i+k+1));
-		zChoices := toList((set{0,1})^**j/deepSplice/toList);
-		apply(zChoices, z -> {2*i, 2*i+1} | (z + v) | {2*(i+j+1), 2*(i+j+1)+1})
-	)))/(c -> c/(i -> i % (2*r)));
-	spanningCircuits := select(subsets(E, r+1), s -> not any(nonSpanningCircuits, c -> isSubset(c, s)));
-	matroid(E, nonSpanningCircuits | spanningCircuits, EntryMode => "circuits")
-)
-
-wheel = method()
-wheel ZZ := Matroid => r -> matroid wheelGraph (r+1)
-
-whirl = method()
-whirl ZZ := Matroid => r -> relaxation wheel(r+1)
-
 getCycles = method()
 getCycles Graph := List => G -> (
 	if not isConnected G then return flatten((connectedComponents G)/(c -> getCycles inducedSubgraph(G, c)));
 	G = graph edges G; -- removes loops
-	-- if #edges G < #G.vertexSet then return {}; -- G is a tree
-	-- possibleVertices := select(G.vertexSet, v -> #neighbors(G, v) > 1);
-	-- if #possibleVertices < #G.vertexSet then G = inducedSubgraph(G, possibleVertices);
+	if #edges G < #G.vertexSet then return {}; -- G is a tree
 	while true do (
 		nonLeaves := select(G.vertexSet, v -> #neighbors(G, v) > 1);
 		if #nonLeaves == #G.vertexSet then break;
@@ -1005,6 +923,63 @@ idealOrlikSolomonAlgebra Matroid := Ideal => opts -> M -> (
 		-- else (-1)^j*e#j);
 )
 
+uniformMatroid = method()
+uniformMatroid (ZZ, ZZ) := Matroid => (k, n) -> (
+	if k > n then (k,n) = (n,k);
+	matroid(toList(0..<n), subsets(n, k)/set)
+)
+
+affineGeometry = method()
+affineGeometry (ZZ, ZZ) := Matroid => (n, p) -> matroid affineMatrix(n, p)
+
+affineMatrix = (n, p) -> sub(transpose matrix toList((prepend(1,n:0)..prepend(1,n:p-1))/toList), ZZ/p)
+
+projectiveGeometry = method()
+projectiveGeometry (ZZ, ZZ) := Matroid => (n, p) -> matroid projectiveMatrix(n, p)
+
+projectiveMatrix = (n, p) -> (
+	if n == 0 then return matrix{{1_(ZZ/p)}};
+	affineMatrix(n, p) | (matrix{toList((p^n-1)//(p-1):0_(ZZ/p))} || projectiveMatrix(n-1, p))
+)
+
+thetaMatroid = method()
+thetaMatroid ZZ := Matroid => n -> (
+	(X, Y) := (toList(0..<n), toList(n..<2*n));
+	matroid(X | Y, ({X} | delete(null, flatten table(n, n, (i,j) -> if i =!= j then (X | {Y#i}) - set{j})) | flatten table(subsets(X, n-2), subsets(Y, 2), (s,t) -> s | t))/set)
+)
+
+binarySpike = method() -- unique binary tipped r-spike
+binarySpike ZZ := Matroid => r -> matroid(id_((ZZ/2)^r) | matrix table(r, r+1, (i,j) -> if i == j then 0 else 1))
+
+spike = method()
+spike (ZZ, List) := Matroid => (r, C3) -> ( -- tipped r-spike
+	E := toList(0..2*r);
+	C1 := toList apply(r, i -> {0, 2*i+1, 2*(i+1)});
+	C2 := apply(subsets(r, 2), p -> {2*p#0+1, 2*(p#0+1), 2*p#1+1, 2*(p#1+1)});
+	C := C1 | C2 | C3;
+	C4 := select(subsets(E, r+1), s -> not any(C, c -> isSubset(c, s)));
+	matroid(E, C | C4, EntryMode => "circuits")
+)
+spike ZZ := Matroid => r -> spike(r, {}) -- free tipped r-spike
+
+swirl = method()
+swirl ZZ := Matroid => r -> ( -- free rank-r swirl
+	E := toList(0..<2*r);
+	nonSpanningCircuits := (flatten flatten table(r, r-3, (i,j) -> (
+		v := toList apply(j, k -> 2*(i+k+1));
+		zChoices := toList((set{0,1})^**j/deepSplice/toList);
+		apply(zChoices, z -> {2*i, 2*i+1} | (z + v) | {2*(i+j+1), 2*(i+j+1)+1})
+	)))/(c -> c/(i -> i % (2*r)));
+	spanningCircuits := select(subsets(E, r+1), s -> not any(nonSpanningCircuits, c -> isSubset(c, s)));
+	matroid(E, nonSpanningCircuits | spanningCircuits, EntryMode => "circuits")
+)
+
+wheel = method()
+wheel ZZ := Matroid => r -> matroid wheelGraph (r+1)
+
+whirl = method()
+whirl ZZ := Matroid => r -> relaxation wheel(r+1)
+
 specificMatroid = method()
 specificMatroid String := Matroid => name -> (
 	if name == "U24" then (
@@ -1016,7 +991,6 @@ specificMatroid String := Matroid => name -> (
 	) else if name == "nonfano" or name == "F7-" then (
 		relaxation(specificMatroid "fano", set{4,5,6})
 	) else if name == "V8+" then (
-		-- matroid(toList(0..7), {{0,1,2,3},{0,3,4,5},{1,2,4,5},{0,3,6,7},{1,2,6,7},{4,5,6,7}}/set, EntryMode => "nonbases")
 		spike 4 \ set{0}
 	) else if name == "vamos" then (
 		relaxation(specificMatroid "V8+", set{4,5,6,7})
@@ -1090,8 +1064,7 @@ allMatroids (ZZ, ZZ) := List => (n, r) -> (
 	if r == 1 then return {uniformMatroid(1, n)} | apply(n-1, i -> matroid(E, take(subsets(n, 1), i+1), EntryMode => "nonbases"));
 	if n > 9 then error "allMatroids: Can only return all matroids on <= 9 elements";
 	PE := reverse sort subsets(set E, r);
-	numMatroids := {7, 13, 23, 38, 37, 108, 58, 325, 940, 87, 1275, 190214};
-	-- cf. Table 1 in https://arxiv.org/pdf/math/0702316.pdf
+	numMatroids := {7, 13, 23, 38, 37, 108, 58, 325, 940, 87, 1275, 190214}; -- cf. Table 1 in https://arxiv.org/pdf/math/0702316.pdf
 	K := {(4,2),(5,2),(6,2),(6,3),(7,2),(7,3),(8,2),(8,3),(8,4),(9,2),(9,3),(9,4)};
 	H := hashTable apply(#K, i -> K#i => {2*i+1+sum take(numMatroids,i), 2*i+sum take(numMatroids,i+1)});
 	db := "SmallMatroids.txt";
@@ -1099,22 +1072,6 @@ allMatroids (ZZ, ZZ) := List => (n, r) -> (
 	apply(take(lines get db, H#(n,r)), l -> matroid(E, PE_(positions(characters l, c -> c === "*"))))
 )
 allMatroids ZZ := List => n -> flatten apply(n+1, i -> allMatroids(n, i))
--- allMatroids ZZ := List => n -> (
-	-- if n > 8 then error "Can only return all matroids on <= 8 elements";
-	-- if n == 1 then return {uniformMatroid(0, 1), uniformMatroid(1, 1)};
-	-- startedReading := false;
-	-- E := toList(0..<n); r := 0;
-	-- matroidList := for l in lines get(first select(apply(path, p -> p | "Matroids/SmallMatroids.txt"), p -> fileExists p)) list (
-		-- if startedReading then (
-			-- if #l == 0 then break
-			-- else if #l > binomial(n, r) then ( r = r + 1; PE := reverse sort subsets(set E, r); );
-			-- matroid(E, PE_(positions(characters l, c -> c === "*")))
-		-- ) else if l == ("-- " | n | " elements") then (startedReading = true;)
-	-- );
-	-- matroidList = {uniformMatroid(0, n)} | delete(null, matroidList);
-	-- L := toList(0..#matroidList - #select(matroidList, M -> 2*rank M == n) - 1);
-	-- matroidList | (matroidList_L / dual)_(rsort L)
--- )
 
 allMinors = method()
 allMinors (Matroid, Matroid) := List => (M, N) -> (
@@ -1170,4 +1127,3 @@ check "Matroids"
 -- TODO:
 -- Update documentation
 -- Potential improvements to flats, latticeOfFlats: record (all?) containment info
--- Potential improvements to getCycles: iterate removing leaves, remove bridges?
