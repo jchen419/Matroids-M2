@@ -327,6 +327,7 @@ foundation Matroid := Foundation => opts -> M -> (
     dbgLevelStore = debugLevel;
     debugLevel = 0;
     r := rank M;
+    cacheList := {};
     strat := toLower if opts.Strategy === null then "bases" else opts.Strategy;
     if dbgLevelStore > 0 then << "foundation: Using strategy " << strat << endl;
     if strat === "hyperplanes" then (
@@ -356,17 +357,10 @@ foundation Matroid := Foundation => opts -> M -> (
                 if member(#T, {8,10}) then (S, T) else continue
             )
         );
-        if dbgLevelStore > 0 then print "foundation: Detecting dual Fano minor...";
-        if not F7dualKnown then for F in select(flats(M, 4), f -> rank_M f == r - 4) do (
-            if #select(corank3flats, F3 -> isSubset(F, F3)) < 7 then continue;
-            if #select(corank2flats, F2 -> isSubset(F, F2)) < 21 then continue;
-            if #select(hyperplanes M, H -> isSubset(F, H)) < 14 then continue;
-            if hasMinor(M/F, dual F7) then (
-                hasF7dual = true;
-                break;
-            );
+        if not F7dualKnown and not hasF7 then (
+            if dbgLevelStore > 0 then print "foundation: Detecting dual Fano minor...";
+            hasF7dual = hasMinor(M, dual F7);
         );
-        if dbgLevelStore > 1 then print ("foundation: F7: " | net hasF7 | ", F7*: " | net hasF7dual);
         if dbgLevelStore > 0 then print "foundation: All minors found. Finding relations...";
         H4aminors := select(H4hyps, p -> #last p == 8);
         H4bminors := select(H4hyps, p -> #last p == 10);
@@ -411,13 +405,15 @@ foundation Matroid := Foundation => opts -> M -> (
         (g, ch) := myMinPres H;
         eps = ch_{0} % g;
         hexes := hexesFromPairs(g, eps, apply(u, i -> {ch_{i+1}, ch_{i+u+1}}));
+        cacheList = {("pruningMapH", ch), ("genTableH", genTable)};
     ) else (
         G = ZZ^(#bases M + 1);
         eps = matrix G_{0};
         signPerm := s -> if det ((id_(ZZ^(#M_*)))_s)^(sort s) == 1 then 0 else 1;
         basesMap := hashTable apply(#bases M, i -> (bases M)#i => i+1);
+        if dbgLevelStore > 0 then << "foundation: #bases: " << #basesMap << ". Finding trivial cross ratios..." << endl;
         maxRankNonbases := select(nonbases M, N -> rank_M N == rank M - 1)/toList;
-        if dbgLevelStore > 0 then << "foundation: Numbers of bases: " << #basesMap << ". Computing trivial cross ratios..." << endl;
+        if dbgLevelStore > 0 then << "foundation: #trivial cross ratios: " << #maxRankNonbases << ". Computing relations..." << endl;
         trivialCrossRatios := matrix{flatten for N in maxRankNonbases list (
             C := toList fundamentalCircuit(M, set N, N#0);
             D := toList fundamentalCircuit(dual M, M.groundSet - N, last toList(M.groundSet - N));
@@ -428,28 +424,25 @@ foundation Matroid := Foundation => opts -> M -> (
             ))
         )};
         if trivialCrossRatios == 0 then trivialCrossRatios = map(ZZ^(#bases M+1),ZZ^0,0);
-        if dbgLevelStore > 0 then << "foundation: #trivialCrossRatios: " << numcols trivialCrossRatios << endl;
+        if dbgLevelStore > 0 then << "foundation: " << numcols trivialCrossRatios << " relations found." << endl;
         B := sort toList first bases M;
         D = sort toList (M.groundSet - B);
         zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
         BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
         onePos := (edges kruskalSpanningForest BG)/toList/sort;
         if dbgLevelStore > 0 then << "foundation: Spanning forest: " << onePos << endl;
-        imDegMap := matrix({G_1} | apply(onePos, p -> G_(basesMap#(set B + set p - (set B*set p)))));
+        imDegMap := matrix({G_1} | apply(onePos, p -> G_(basesMap#(set B + set p - (set B*set p))))); -- corank of image of degree map = #connectedComponents BG - 1
         (g, ch) = myMinPres (2*eps | trivialCrossRatios | imDegMap);
         eps = ch_{0} % g;
         if dbgLevelStore > 0 then << "foundation: Finding upper U24 minors... " << flush;
         IS := independentSets(M, r - 2);
-        corank2Table := hashTable delete(null, apply(flats(M, 2), F -> (
+        corank2Table := hashTable delete(null, apply(flats(M, 2) - set hyperplanes M, F -> (
             p := position(IS, I -> isSubset(I, F));
             if p =!= null then (F, IS#p)
         )));
         U24minors = flatten apply(keys corank2Table, F -> (
             apply(subsets(apply(select(hyperplanes M, H -> isSubset(F, H)), H -> first toList(H - F)), 4), s -> {corank2Table#F, sort s})
         ));
-        -- E := toList M.groundSet;
-        -- U := uniformMatroid(2,4);
-        -- U24minors = apply(allMinors(M, U), p -> {p#0, E - p#0 - p#1});
         u = #U24minors;
         if dbgLevelStore > 0 then << u << " found. " << endl << "foundation: Generating hexagons..." << endl;
         hexes = hexesFromPairs(g, eps, apply(U24minors, p -> (
@@ -457,14 +450,15 @@ foundation Matroid := Foundation => opts -> M -> (
             l = apply(l, q -> ch_(basesMap#(p#0 + q)));
             {l#0 + l#1 - l#2 - l#3, l#4 + l#5 - l#2 - l#3}/matrix
         )));
-        genTable = basesMap;
+        -- genTable = basesMap;
+        cacheList = {("pruningMapB", ch), ("genTableB", basesMap), ("imDegMap", imDegMap), ("spanningForest", onePos)};
     );
     debugLevel = dbgLevelStore;
     new Foundation from {
         symbol multiplicativeGroup => coker g,
         symbol epsilon => eps,
         symbol hexagons => hexes,
-        cache => new CacheTable from {"pruningMap" => ch, "genTable" => genTable, "numU24minors" => u, "strategy" => strat}
+        cache => new CacheTable from (cacheList | {"numU24minors" => u, "strategy" => strat})
     }
     )
 )
@@ -476,6 +470,9 @@ saveFoundation (Matroid, String) := String => (M, fileName) -> (
     outputFile << "new Foundation from {" << endl;
     for k in delete(cache, keys F) do outputFile << toString k << " => " << toString(F#k) << ", " << endl;
     outputFile << "cache => new CacheTable from {" << endl;
+    -- for k in keys F.cache do (
+        -- outputFile << "\"" << k << "\" => " << toExternalString F.cache#k << ", " << endl;
+    -- );
     outputFile << "\"genTable\" => " << toString(F.cache#"genTable") << ", " << endl;
     outputFile << "\"numU24minors\" => " << toString(F.cache#"numU24minors") << ", " << endl;
     outputFile << "\"pruningMap\" => " << toExternalString(F.cache#"pruningMap") << ", " << endl;
@@ -963,6 +960,20 @@ F = foundation(BRplus, Strategy => "hyperplanes", HasF7Minor => false, HasF7dual
 assert(F == pasture k)
 ///
 
+TEST /// -- Matroid with foundation K
+M = specificMatroid fano ++ specificMatroid T8
+elapsedTime foundation(M, Strategy => "hyperplanes")
+areIsomorphic(foundation M, specificPasture krasner)
+///
+
+TEST /// -- Pasture which is not a foundation
+P = pasture GF 4 * pasture GF 5
+G = pasture([t], "t + t^2")
+assert Equation(0, #morphisms(P, G))
+assert Equation(2, #morphisms(G, P))
+-- Note: it is known that any matroid which is representable over GF(4) and GF(5) is also representable over G
+///
+
 TEST /// -- Isomorphism check
 M = specificMatroid "nonpappus"
 nP = foundation M
@@ -1011,7 +1022,7 @@ representation (Matroid, PastureMorphism) := Matrix => (M, phi) -> (
     F := foundation(M, Strategy => "bases");
     if source phi =!= F then error "representation: Expected source of phi to equal the foundation of M";
     B := sort toList first bases M;
-    (ch, basesMap) := (F.cache#"pruningMap", F.cache#"genTable");
+    (ch, basesMap) := (F.cache#"pruningMapB", F.cache#"genTableB");
     allBases := set bases M;
     table(rank M, #M_*, (i,j) -> (
         p := position(B, b -> b === j);
@@ -1102,24 +1113,47 @@ hyperplaneCorrespondenceTable := (M, N, e) -> (
 -- hyperplaneCorrespondenceTable (Matroid, ZZ, String) := HashTable => (M, e, mode) -> (
     -- N := if mode === "delete" then M \ set{e} else M / set{e};
     (HM, HN) := (hyperplanes M, hyperplanes N);
-    hashTable apply(HN, h -> ( H := set apply(toList h, i -> if i<e then i else i+1); (h, if member(H, HM) then H else H + set{e})))
+    hashTable apply(HN, h -> ( H := h/(i -> if i < e then i else i+1); (h, if member(H, HM) then H else H + set{e})))
 )
 
 inducedMapFromMinor = method()
 inducedMapFromMinor (Matroid, ZZ, String) := PastureMorphism => (M, e, mode) -> (
+    F := foundation M;
     N := if mode === "delete" then M \ set{e} else M / set{e};
-    F := foundation(M, Strategy => "hyperplanes");
-    G := foundation(N, Strategy => "hyperplanes");
+    strat := F.cache#"strategy";
+    G := foundation(N, Strategy => strat);
     (Fstar, Gstar) := (F.multiplicativeGroup, G.multiplicativeGroup);
-    -- H := hyperplaneCorrespondenceTable(M, e, mode);
-    H := hyperplaneCorrespondenceTable(M, N, e);
-    if numgens Fstar == 0 then pastureMorphism(G, F, map(Fstar, Gstar, 0)) else (
-    	inducedMinors := apply(sort(pairs G.cache#"genTable" /toList, last)/first/toList, U -> 1 + (F.cache#"genTable")#(set apply(U, h -> H#h)));
-    	B := id_(ZZ^(numgens Fstar))_{0};
-    	B = B | (F.cache#"pruningMap")_(inducedMinors | apply(inducedMinors, i -> i + F.cache#"numU24minors"));
-    	C := id_(ZZ^(numgens Gstar)) // (G.cache#"pruningMap");
-    	pastureMorphism(G, F, B*C)
-    )
+    if (numgens Fstar == 0 or numgens Gstar == 0) then return pastureMorphism(G, F, map(Fstar, Gstar, 0));
+    B := if strat === "hyperplanes" then (
+        A := id_(ZZ^(numgens Gstar)) // (G.cache#"pruningMapH");
+        H := hyperplaneCorrespondenceTable(M, N, e);
+        inducedMinors := apply(sort(pairs G.cache#"genTableH" /toList, last)/first/toList, U -> 1 + (F.cache#"genTableH")#(set apply(U, h -> H#h)));
+        id_(ZZ^(numgens Fstar))_{0} | (F.cache#"pruningMapH")_(inducedMinors | apply(inducedMinors, i -> i + F.cache#"numU24minors"))
+    ) else (
+        A = id_(ZZ^(numgens Gstar)) // (G.cache#"pruningMapB");
+        -- Delete coloop: add e to all bases of N
+        -- Delete non-coloop: inclusion
+        -- Contract loop: identity
+        -- Contract non-loop: add e to all bases of N
+        negTable := hashTable((pairs G.cache#"genTableB")/reverse);
+        I := id_(ZZ^(#bases M));
+        b0 := first bases N;
+        E := id_(ZZ^(#N_*));
+        D := matrix{apply(G.cache#"spanningForest", e -> E_{e#1} - E_{e#0})};
+        J := matrix{apply(G.cache#"spanningForest", e -> 1)} || map(ZZ^(#bases N-1), ZZ^(#G.cache#"spanningForest"), 0);
+        delta := id_(ZZ^1) ++ (id_(ZZ^(#bases N)) - matrix{apply(bases N, b -> (
+            v := transpose matrix{apply(#N_*, i -> if (member(i, b) and not member(i, b0)) then 1 else if (not member(i, b) and member(i, b0)) then -1 else 0)};
+            (submatrix'(G.cache#"imDegMap",{0},{0}) - J) * (v // D)
+        ))});
+        gamma := matrix{apply(#bases N, j -> (
+            b := negTable#(j+1)/(i -> if i < e then i else i+1);
+            if ((mode == "contract" and not member(e, loops M)) or (mode == "delete" and member(e, coloops M))) then b = b + set{e};
+            I_{F.cache#"genTableB"#b - 1}
+        ))};
+        << netList toList({delta, gamma}) << endl;
+        F.cache#"pruningMapB" * (id_(ZZ^1) ++ gamma) * delta
+    );
+    pastureMorphism(G, F, B*A)
 )
 
 TEST ///
