@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.4.9",
-	Date => "April 19, 2022",
+	Version => "1.4.10",
+	Date => "April 23, 2022",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -149,8 +149,11 @@ matroid Graph := Matroid => opts -> G -> (
 		C = C | select(C, c -> member(E#(P#i), c))/(c -> c - set{E#(P#i)} + set{e+i}) | {set{E#(P#i), e + i}};
 	);
 	M := matroid(edges G | P | L, C | apply(#L, i -> set{e + #P + i}), EntryMode => "circuits");
-	M.cache.graph = G;
-	setRepresentation(M, sub(incidenceMatrix G, ZZ/2))
+	if #L == 0 and #P == 0 then M.cache.graph = G;
+	A := incidenceMatrix G;
+	I := id_(ZZ^(#G.vertexSet));
+	A = A | matrix{apply(P/toList, p -> I_{p#0} + I_{p#1})} | map(ZZ^(numrows A), ZZ^(#L), 0);
+	setRepresentation(M, sub(A, ZZ/2))
 )
 matroid (List, MonomialIdeal) := Matroid => opts -> (E, I) -> (
 	allVars := product gens ring I;
@@ -174,7 +177,7 @@ setRepresentation (Matroid, Matrix) := Matroid => (M, A) -> (
 
 getRepresentation = method()
 getRepresentation Matroid := Thing => M -> (
-	if M.cache.?graph then graph(join(M_*, (flatten(select(M_*, c -> #c == 1)/toList))/(v -> {v,v})))
+	if M.cache.?graph then M.cache.graph -- graph(join(M_*, (flatten(select(M_*, c -> #c == 1)/toList))/(v -> {v,v})))
 	else if M.cache.?storedRepresentation then M.cache.storedRepresentation
 	else ( printerr("getRepresentation: No representation stored"); null )
 )
@@ -654,7 +657,11 @@ relaxation (Matroid, Set) := Matroid => opts -> (M, S) -> (
 	if not opts.CheckWellDefined or (member(S, circuits M) and member(S, hyperplanes M)) then matroid(M_*, append(bases M, S))
 	else error "relaxation: Expected circuit-hyperplane"
 )
-relaxation Matroid := Matroid => opts -> M -> relaxation(M, first toList(set circuits M * set hyperplanes M))
+relaxation Matroid := Matroid => opts -> M -> (
+	CH := set circuits M * set hyperplanes M;
+	if #CH == 0 then error "relaxation: No circuit hyperplanes!";
+	relaxation(M, first toList CH)
+)
 
 relabel = method()
 relabel (Matroid, HashTable) := Matroid => (M, perm) -> (
@@ -975,10 +982,10 @@ swirl ZZ := Matroid => r -> ( -- free rank-r swirl
 )
 
 wheel = method()
-wheel ZZ := Matroid => r -> matroid wheelGraph (r+1)
+wheel ZZ := Matroid => r -> if r == 2 then matroid(wheelGraph 3, ParallelEdges => {set{1,2}}) else matroid wheelGraph(r+1)
 
 whirl = method()
-whirl ZZ := Matroid => r -> relaxation wheel(r+1)
+whirl ZZ := Matroid => r -> relaxation wheel r
 
 specificMatroid = method()
 specificMatroid String := Matroid => name -> (
