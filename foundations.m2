@@ -470,13 +470,13 @@ saveFoundation (Matroid, String) := String => (M, fileName) -> (
     outputFile << "new Foundation from {" << endl;
     for k in delete(cache, keys F) do outputFile << toString k << " => " << toString(F#k) << ", " << endl;
     outputFile << "cache => new CacheTable from {" << endl;
-    -- for k in keys F.cache do (
-        -- outputFile << "\"" << k << "\" => " << toExternalString F.cache#k << ", " << endl;
-    -- );
-    outputFile << "\"genTable\" => " << toString(F.cache#"genTable") << ", " << endl;
-    outputFile << "\"numU24minors\" => " << toString(F.cache#"numU24minors") << ", " << endl;
-    outputFile << "\"pruningMap\" => " << toExternalString(F.cache#"pruningMap") << ", " << endl;
-    outputFile << "\"strategy\" => " << toExternalString(F.cache#"strategy") << endl;
+    k0 := if F.cache#?"genTableB" then "genTableB" else "genTableH";
+    for k in keys F.cache - set{k0} do outputFile << "\"" << k << "\" => " << toExternalString F.cache#k << ", " << endl;
+    outputFile << "\"" << k0 << "\" => " << toString F.cache#k0 << endl;
+    -- outputFile << "\"genTable\" => " << toString(F.cache#"genTable") << ", " << endl;
+    -- outputFile << "\"numU24minors\" => " << toString(F.cache#"numU24minors") << ", " << endl;
+    -- outputFile << "\"pruningMap\" => " << toExternalString(F.cache#"pruningMap") << ", " << endl;
+    -- outputFile << "\"strategy\" => " << toExternalString(F.cache#"strategy") << endl;
     outputFile << "}" << endl << "}" << close;
     fileName
 )
@@ -705,9 +705,12 @@ fullRankSublattice Pasture := List => P -> (
         s := rank (matrix{flatten(P.hexagons/first)})^freePart;
         if dbgLevelStore > 0 then << "fullRankSublattice: Finding rank " << s << " sublattice..." << endl;
         currentPairs := {};
+        r := 0;
+        T := new MutableList from {0, 0, 0};
         while true do (
-            A := if #currentPairs == 0 then map(ZZ^n,ZZ^0,0) else matrix{flatten(currentPairs/first/last)};
-            r := rank A^freePart;
+            -- A := if #currentPairs == 0 then map(ZZ^n,ZZ^0,0) else matrix{flatten(currentPairs/first/last)};
+            A := if #currentPairs == 0 then map(ZZ^n,ZZ^0,0) else A | ( p := first last currentPairs; if p#0#0 == r+1 then matrix{p#1} else p#1#1 );
+            r = rank A^freePart;
             if r == s then break;
             (type1Pair, type2Pairs, type3Pairs, type4Hexes) := (null, {}, {}, {});
 	    for h in P.hexagons - set(currentPairs/last) - set flatten S do (
@@ -722,14 +725,15 @@ fullRankSublattice Pasture := List => P -> (
 		) else if set t === set{r+1, r+2} then type3Pairs = append(type3Pairs, {{t, h#0}, h});
 	    );
 	    S = append(S, type4Hexes);
-	    newPair := if type1Pair =!= null then type1Pair
-	    else if #type2Pairs > 0 then type2Pairs#0
-            else if #type3Pairs > 0 then ( S = append(S, {}); type3Pairs#0 )
+	    newPair := if type1Pair =!= null then ( T#0 = T#0 + 1; type1Pair )
+	    else if #type2Pairs > 0 then ( T#1 = T#1 + 1; type2Pairs#0 )
+            else if #type3Pairs > 0 then ( S = append(S, {}); T#2 = T#2 + 1; type3Pairs#0 )
             else break;
             currentPairs = append(currentPairs, newPair);
+            if dbgLevelStore > 0 then << "\rfullRankSublattice: Types of pairs found: " << toList T << flush;
         );
         S = append(S, P.hexagons - set(currentPairs/last) - set flatten S);
-        if dbgLevelStore > 0 then << "fullRankSublattice: Sublattice found. Creating generating rules..." << endl;
+        if dbgLevelStore > 0 then << endl << "fullRankSublattice: Sublattice found. Creating generating rules..." << endl;
         G := currentPairs/first;
         g := #freePart;
         L := if g == 0 then map(ZZ^n, ZZ^0, 0) else matrix{flatten for i to #G-1 list if G#i#0#2 == 1 + G#i#0#1 then G#i#1 else G#i#1#1};
@@ -1291,20 +1295,20 @@ elapsedTime morphisms(foundation M, specificPasture "sign")
 
 -- Example 6.8.4 in Oxley
 needsPackage "Cyclotomic"
-A := k -> (
+reidMatroid := k -> matroid(
     K := cyclotomicField k;
     alpha := K_0;
     id_(K^3) | matrix{{1,1},{1-alpha,1},{1,0}} | matrix{apply(k-1, i -> ( f = sum(i+1, j -> alpha^j); matrix{{1,0},{1,1},{f,f}} ))}
 )
-areIsomorphic(matroid A(2), specificMatroid "nonfano")
-M = matroid A(6)
+areIsomorphic(reidMatroid(2), specificMatroid "nonfano")
+M = reidMatroid(6)
 elapsedTime F = foundation M
 representations(M, GF 2^8)
 representations(M, GF 3^5)
 representations(M, GF 5)
 representations(M, GF 5^2)
 representations(M, GF 7)
--- matroid A(k) is representable over finite field iff order of field is 1 mod k (i.e. field contains primitive kth root of unity)
+-- reidMatroid(k) is representable over finite field iff order of field is 1 mod k (i.e. field contains primitive kth root of unity)
 
 -- 0 = a, 1 = b, 2 = -b, 3 = eps+a-b, 4 = -a, 5 = eps-a+b
 fundEltsU = flatten flatten U.hexagons
