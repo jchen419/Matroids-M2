@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.4.10",
-	Date => "April 23, 2022",
+	Version => "1.4.11",
+	Date => "April 29, 2022",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -34,9 +34,6 @@ export {
 	"groundSet",
 	"indicesOf",
 	"bases",
-	"setRepresentation",
-	"getRepresentation",
-	"storedRepresentation",
 	"nonbases",
 	"circuits",
 	"fundamentalCircuit",
@@ -58,6 +55,7 @@ export {
 	"seriesConnection",
 	"parallelConnection",
 	"sum2",
+	"simpleMatroid",
 	"singleElementExtension",
 	"CheckWellDefined",
 	"freeExtension",
@@ -73,7 +71,9 @@ export {
 	"getIsos",
 	"tutteEvaluate",
 	"chromaticPolynomial",
-	"simpleMatroid",
+	"setRepresentation",
+	"getRepresentation",
+	"storedRepresentation",
 	"uniformMatroid",
 	"affineGeometry",
 	"projectiveGeometry",
@@ -150,9 +150,10 @@ matroid Graph := Matroid => opts -> G -> (
 	);
 	M := matroid(edges G | P | L, C | apply(#L, i -> set{e + #P + i}), EntryMode => "circuits");
 	if #L == 0 and #P == 0 then M.cache.graph = G;
-	A := incidenceMatrix G;
 	I := id_(ZZ^(#G.vertexSet));
-	A = A | matrix{apply(P/toList, p -> I_{p#0} + I_{p#1})} | map(ZZ^(numrows A), ZZ^(#L), 0);
+	A := incidenceMatrix G;
+	if #P > 0 then A = A | matrix{apply(P/toList, p -> I_{p#0} + I_{p#1})};
+	if #L > 0 then A = A | map(ZZ^(numrows A), ZZ^(#L), 0);
 	setRepresentation(M, sub(A, ZZ/2))
 )
 matroid (List, MonomialIdeal) := Matroid => opts -> (E, I) -> (
@@ -166,20 +167,6 @@ matroid Ideal := Matroid => opts -> I -> (
 	-- The following is ~2x faster than isSquareFree
 	if (J == I and isSubset(set flatten flatten(J_*/exponents), set{0,1})) then matroid(gens ring J, J)
 	else error "matroid: Expected a squarefree monomial ideal"
-)
-
-setRepresentation = method()
-setRepresentation (Matroid, Matrix) := Matroid => (M, A) -> (
-	M.cache.storedRepresentation = A;
-	M.cache.rankFunction = S -> rank A_S;
-	M
-)
-
-getRepresentation = method()
-getRepresentation Matroid := Thing => M -> (
-	if M.cache.?graph then M.cache.graph -- graph(join(M_*, (flatten(select(M_*, c -> #c == 1)/toList))/(v -> {v,v})))
-	else if M.cache.?storedRepresentation then M.cache.storedRepresentation
-	else ( printerr("getRepresentation: No representation stored"); null )
 )
 
 ideal Matroid := MonomialIdeal => M -> ( -- Stanley-Reisner ideal of independence complex
@@ -219,6 +206,13 @@ isWellDefined Matroid := Boolean => M -> (
 		if debugLevel > 0 then printerr("isWellDefined: expected rank to be the size of all bases");
 		return false
 	);
+	if M.cache.?storedRepresentation then (
+		A := M.cache.storedRepresentation;
+		if numcols A =!= #M.groundSet or rank A =!= rank M then (
+			if debugLevel > 0 then printerr("isWellDefined: storedRepresentation is inaccurate");
+			return false
+		);
+	);
 	 -- circuit elimination
 	I := ideal dual M;
 	if numgens ideal M < numgens I then I = ideal M;
@@ -229,7 +223,6 @@ isWellDefined Matroid := Boolean => M -> (
 
 Matroid _ ZZ := (M, i) -> M.cache.groundSet#i
 Matroid _ List := (M, S) -> (M.cache.groundSet)_S
--- Matroid _ Set := (M, S) -> (M.cache.groundSet)_(keys S)
 Matroid _ Set := (M, S) -> S/(i -> M.cache.groundSet#i)
 Matroid _* := M -> M.cache.groundSet
 
@@ -237,9 +230,13 @@ groundSet = method()
 groundSet Matroid := Set => M -> M.groundSet
 
 indicesOf = method()
-indicesOf (List, List) := List => (E, L) -> (
+indicesOf (List, List) := List => (E, L) -> ( -- L: list of lists
 	H := hashTable apply(#E, i -> E_i => i);
 	L/(l -> set(l/(i -> H#i)))
+)
+indicesOf (List, Sequence) := List => (E, L) -> ( -- L: sequence of sets
+	H := hashTable apply(#E, i -> E_i => i);
+	toList(L/(l -> l/(i -> H#i)))
 )
 indicesOf (Matroid, List) := List => (M, L) -> (
 	if #L == 0 then return {};
@@ -324,19 +321,52 @@ flats (Matroid, ZZ) := List => (M, r) -> ( -- computes all intersections of r hy
 )
 flats Matroid := List => M -> (
 	if M.cache.?flats then M.cache.flats else M.cache.flats = (
+		if debugLevel > 0 then printerr("flats: Finding hyperplanes...");
 		H := hyperplanes M;
+		if debugLevel > 0 then printerr("flats: " | toString(#H) | " hyperplanes found. Computing intersections of hyperplanes...");
+		E := M.groundSet;
 		flatList := H;
-		numFlatsFound := 0;
-		while numFlatsFound < #flatList do (
-			numFlatsFound = #flatList;
-			flatList = unique flatten apply(flatList, F -> apply(H, h -> h*F));
+		newFlats := H;
+		M.cache#"flatsRelationsTable" = new MutableHashTable from apply(H, h -> (h, new MutableHashTable from {(h,1),(E,1)}));
+		M.cache#"flatsRelationsTable"#E = new MutableHashTable from {(E,1)};
+		while true do (
+			newFlats = unique flatten apply(newFlats, f -> 
+				apply(select(H, h -> not isSubset(f, h)), h -> (
+					g := h*f;
+					if M.cache#"flatsRelationsTable"#?g then M.cache#"flatsRelationsTable"#g#f = 1 else M.cache#"flatsRelationsTable"#g = new MutableHashTable from {(g,1),(f,1),(h,1),(E,1)};
+					g
+				))
+			) - set flatList;
+			if #newFlats == 0 then break;
+			if debugLevel > 0 then printerr("flats: " | toString(#newFlats) | " new flats found...");
+			flatList = newFlats | flatList;
 		);
-		append(sort(flatList, f -> #f), M.groundSet)
+		append(sort(flatList - set H, f -> #f) | H, E)
 	)
 )
 
 latticeOfFlats = method()
-latticeOfFlats Matroid := Poset => M -> poset(flats M/toList/sort, (a, b) -> isSubset(a, b))
+-- latticeOfFlats Matroid := Poset => M -> poset(flats M/toList/sort, (a, b) -> isSubset(a, b))
+latticeOfFlats Matroid := Poset => M -> (
+	if not M.cache#?"flatsRelations" then M.cache#"flatsRelations" = (
+		H := hyperplanes M;
+		E := M.groundSet;
+		F01 := flats M;
+		F2 := drop(drop(F01, 1), -1);
+		scan(#F2 - #H, i -> (
+			f := F2#(-(#H)-1-i);
+			scan(toList(set flatten apply(keys M.cache#"flatsRelationsTable"#f, k -> keys M.cache#"flatsRelationsTable"#k) - keys M.cache#"flatsRelationsTable"#f), k -> M.cache#"flatsRelationsTable"#f#k = 1);
+		));
+		M.cache#"flatsRelationsTable"#(F01#0) = new MutableHashTable from apply(F01, f -> (f,1));
+		M.cache#"flatsRelationsMatrix" = matrix apply(F01, f -> apply(F01, f1 -> if M.cache#"flatsRelationsTable"#f#?f1 then 1 else 0));
+		if debugLevel > 0 then printerr("latticeOfFlats: relations matrix has rank " | toString(rank M.cache#"flatsRelationsMatrix"));
+		sort flatten apply(keys M.cache#"flatsRelationsTable", k -> (
+			k0 := sort keys k;
+			apply((keys M.cache#"flatsRelationsTable"#k - set{k})/keys/sort, f -> {k0,f})
+		))
+	);
+	poset(flats M/toList/sort, M.cache#"flatsRelations", M.cache#"flatsRelationsMatrix", AntisymmetryStrategy => "none")
+)
 
 fVector Matroid := HashTable => opts -> M -> hashTable pairs tally(flats M/rank_M)
 
@@ -359,11 +389,22 @@ restriction = method()
 restriction (Matroid, List) := Matroid => (M, S) -> restriction(M, set indicesOf(M, S))
 restriction (Matroid, Set) := Matroid => (M, S) -> ( -- assumes S is a subset of M.groundSet (not M_*)
 	S0 := sort keys S;
-	matroid(M_S0, (
+	N := matroid(M_S0, (
+		-- H := hashTable(identity, apply(bases M, b -> (I := S*b; (#I, I))));
+		-- unique indicesOf(S0, sequence deepSplice H#(max keys H))
+		
+		-- H := hashTable apply(bases M, b -> (I := S*b; (I, #I)));
+		-- r := max values H;
+		-- indicesOf(S0, toSequence select(keys H, k -> H#k == r))
+		
+		-- B := sort(unique(bases M/(b -> S*b)), I -> #I);
+		-- indicesOf(S0, drop(B, {0, position(B, I -> #I == #(B#-1)) - 1}) /toList)
+		
 		B := bases M/(b -> S*b);
 		r := max sizes B;
 		indicesOf(S0, unique select(B, b -> #b == r) /toList)
-	))
+	));
+	if M.cache.?storedRepresentation then setRepresentation(N, M.cache.storedRepresentation_S0) else N
 )
 Matroid | Set := (M, S) -> restriction(M, S)
 Matroid | List := (M, S) -> restriction(M, S)
@@ -377,7 +418,7 @@ Matroid \ List := (M, S) -> deletion(M, S)
 
 contraction = method()
 contraction (Matroid, List) := Matroid => (M, S) -> contraction(M, set indicesOf(M, S))
-contraction (Matroid, Set) := Matroid => (M, S) -> if #S == 0 then M else dual(deletion(dual M, S))
+contraction (Matroid, Set) := Matroid => (M, S) -> dual(deletion(dual M, S))
 Matroid / Set := (M, S) -> contraction(M, S)
 Matroid / List := (M, S) -> contraction(M, S)
 
@@ -497,7 +538,7 @@ parallelConnection (Matroid, Matroid) := Matroid => (M, N) -> dual seriesConnect
 
 sum2 = method()
 sum2 (Matroid, Matroid) := Matroid => (M, N) -> (
-	if member(0, loops M | loops N | coloops M | coloops N) then error "sum2: Expected basepoint 0 to not be a coloop in both M and N";
+	if member(0, loops M | loops N | coloops M | coloops N) then error "sum2: Expected basepoint 0 to not be a loop/coloop in either M or N";
 	seriesConnection(M, N) / set{0}
 )
 
@@ -510,42 +551,30 @@ simpleMatroid Matroid := Matroid => M -> M \ set(select((ideal M)_*, m -> first 
 -----------------------------------------------------------------
 
 singleElementExtension = method(Options => {CheckWellDefined => false})
-
 singleElementExtension (Matroid, List) := Matroid => o -> (M, K) -> (
-	K' := K/toList;
-	if o.CheckWellDefined and not isModularCut(M, K') then (
-		error "singleElementExtension: Expected the second argument
-		to be a modular cut of the matroid given as the first argument."
-	);
-	E := toList M.groundSet;
-	e := (max E) + 1;
-	B := bases M;
-	r := rank M;
-	B' := select(hyperplanes M, H -> not (set K')#?H );
-	B' = flatten apply(B', H -> select(B, b -> #(b*H) == r - 1 ) );
-	B' = apply(B', I -> I + set {e});
-	matroid(E|{e}, B|B')
+    if o.CheckWellDefined and not isModularCut(M, K) then (
+	error "singleElementExtension: Expected a modular cut."
+    );
+    K' := set(K/toList);
+    E := toList M.groundSet;
+    e := #E;
+    B := bases M;
+    r := rank M;
+    H := select(hyperplanes M, h -> not K'#?h);
+    B' := unique flatten for h in H list for b in B list (
+	I := b*h;
+	if #I == r - 1 then I else continue
+    );
+    B' = apply(B', I -> I + set{e});
+    matroid(E|{e}, B|B')
 )
+singleElementExtension (Matroid, Set) := Matroid => o -> (M, F) ->
+singleElementExtension(M, select(hyperplanes M, h -> isSubset(F, h)),
+CheckWellDefined => false)
 
 -- INPUT:  A matroid M and a list K of flats of M forming a modular cut.
 -- OUTPUT: The matroid M +_K e that is the single element extension of
 --         M by the modular cut K.  See [Ox, Sect 7.2].
------------------------------------------------------------------
-
-singleElementExtension (Matroid, Set) := Matroid => o -> (M, F) -> (
-	if not (set flats M)#?F then (
-		error "singleElementExtension: Expected the second argument
-		to be a flat of the matroid given as the first argument."
-	);
-	E := toList M.groundSet;
-	e := (max E) + 1;
-	B := bases M;
-	r := rank M;
-	B' := select(hyperplanes M, H -> not isSubset(F, H) );
-	B' = flatten apply(B', H -> select(B, b -> #(b*H) == r - 1 ) );
-	B' = apply(B', I -> I + set {e});
-	matroid(E|{e}, B|B')
-)
 
 -- INPUT:  A matroid M and a set F that is a flat of M.
 -- OUTPUT: The matroid M +_F e that is the (principal) single element extension of
@@ -772,7 +801,7 @@ tuttePolynomial (Matroid, Ring) := RingElement => memoize((M, R) -> (
 	if #a + #b == #M.groundSet then R_0^#a*R_1^#b
 	else (
 		c := set{(keys((bases M)#0 - a))#0};
-		tuttePolynomial(M \ c, R) + tuttePolynomial(M / c, R)
+		tuttePolynomial(deletion(M, c), R) + tuttePolynomial(contraction(M, c), R)
 	)
 ))
 tuttePolynomial Matroid := RingElement => M -> tuttePolynomial(M, tuttePolynomialRing)
@@ -928,6 +957,20 @@ idealOrlikSolomonAlgebra Matroid := Ideal => opts -> M -> (
 	-- return trim ideal apply(Cir,c->sum for i from 0 to length c - 1 list 
 		-- product for j from 0 to length c - 1 list if i == j then 1 
 		-- else (-1)^j*e#j);
+)
+
+setRepresentation = method()
+setRepresentation (Matroid, Matrix) := Matroid => (M, A) -> (
+	M.cache.storedRepresentation = A;
+	M.cache.rankFunction = S -> rank A_S;
+	M
+)
+
+getRepresentation = method()
+getRepresentation Matroid := Thing => M -> (
+	if M.cache.?graph then M.cache.graph -- graph(join(M_*, (flatten(select(M_*, c -> #c == 1)/toList))/(v -> {v,v})))
+	else if M.cache.?storedRepresentation then M.cache.storedRepresentation
+	else ( printerr("getRepresentation: No representation stored"); null )
 )
 
 uniformMatroid = method()
@@ -1091,9 +1134,9 @@ allMinors (Matroid, Matroid) := List => (M, N) -> (
 toSageMatroid = method()
 toSageMatroid Matroid := String => M -> ( -- for matroids on <= 26 elements
 	alphabet := separate("","abcdefghijklmnopqrstuvwxyz");
-	groundSetStr := concatenate alphabet_(toList(0..<#M.groundSet));
-	basesStr := concatenate apply(bases M, B -> "'" | concatenate alphabet_(sort toList B) | "',");
-	"Matroid(groundset = '" | groundSetStr | "', bases = [" | substring(basesStr, 0, #basesStr - 1) | "])"
+	G := concatenate alphabet_(toList(0..<#M.groundSet));
+	B := concatenate apply(bases M, b -> "'" | concatenate alphabet_(sort toList b) | "',");
+	"Matroid(groundset = '" | G | "', bases = [" | substring(B, 0, #B - 1) | "])"
 )
 
 fromSageMatroid = method()
