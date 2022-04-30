@@ -336,10 +336,10 @@ foundation Matroid := Foundation => opts -> M -> (
         indexOfHyp := h -> hypMap#h;
         corank2flats := select(flats(M, 2), F -> rank_M F == r - 2);
         corank3flats := select(flats(M, 3), F -> rank_M F == r - 3);
-        if dbgLevelStore > 0 then << "foundation: Finding upper U(2,4) minors... " << flush;
+        if dbgLevelStore > 0 then << "foundation: Finding upper U(2,4) minors..." << flush;
         U24minors := flatten apply(corank2flats, F -> subsets(select(hyperplanes M, H -> isSubset(F, H)), 4));
         if dbgLevelStore > 0 then << #U24minors << " found." << endl;
-        if dbgLevelStore > 0 then << "foundation: Finding upper U(2,5) minors... " << flush;
+        if dbgLevelStore > 0 then << "foundation: Finding upper U(2,5) minors..." << flush;
         U25minors := flatten apply(corank2flats, F -> subsets(select(hyperplanes M, H -> isSubset(F, H)), 5));
         if dbgLevelStore > 0 then << #U25minors << " found." << endl;
         if dbgLevelStore > 0 then print "foundation: Finding rank 3 minors (C5, U(3,5), Fano)...";
@@ -434,7 +434,7 @@ foundation Matroid := Foundation => opts -> M -> (
         imDegMap := matrix({G_1} | apply(onePos, p -> G_(basesMap#(set B + set p - (set B*set p))))); -- corank of image of degree map = #connectedComponents BG - 1
         (g, ch) = myMinPres (2*eps | trivialCrossRatios | imDegMap);
         eps = ch_{0} % g;
-        if dbgLevelStore > 0 then << "foundation: Finding upper U24 minors... " << flush;
+        if dbgLevelStore > 0 then << "foundation: Finding upper U24 minors..." << flush;
         IS := independentSets(M, r - 2);
         corank2Table := hashTable delete(null, apply(flats(M, 2) - set hyperplanes M, F -> (
             p := position(IS, I -> isSubset(I, F));
@@ -580,7 +580,7 @@ morphisms1 (Pasture, Pasture) := List => opts -> (P, P') -> (
     if debugLevel > 0 then print("morphisms1: Quotient lattice is: "| net FmodG);
     K := apply(abelianGroupHom(FmodG, T'), f -> f * transpose matrix(FmodG.cache.pruningMap));
     g := #G#0 + #G#1;
-    if debugLevel > 0 then print("morphisms1: Trying " | net(#H * (#fundEltsP')^g) | " candidate morphisms ...");
+    if debugLevel > 0 then print("morphisms1: Trying " | net(#H * (#fundEltsP')^g) | " candidate morphisms...");
     unique flatten for phi in H list (
         phi' := phi || map(ZZ^(#freePart'), ZZ^(#torsPart), 0);
         D := phi' * A^torsPart;
@@ -594,7 +594,7 @@ morphisms1 (Pasture, Pasture) := List => opts -> (P, P') -> (
                 apply(select(fundPairsP', p -> member(e,p)), p -> matrix{if e == p#1 then reverse p else p})
             )) | apply(#G#1, i -> {fundEltsP'#(s#(#G#0+i))});
             candidates = unique if #candidates == 0 then {map(ZZ^(numrows P'star), ZZ^0, 0)} else fold(candidates, (a, b) -> flatten table(a, b, (i, j) -> i|j));
-            if debugLevel > 1 and #candidates > 1 then print("morphisms1: Testing " | net(#K*#candidates) | " sub-candidates ...");
+            if debugLevel > 1 and #candidates > 1 then print("morphisms1: Testing " | net(#K*#candidates) | " sub-candidates...");
             flatten for C in candidates list (
                 E := (C - D) * B;
                 torsE := subTorsion(E^torsPart', T');

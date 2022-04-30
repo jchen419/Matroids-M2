@@ -209,7 +209,7 @@ isWellDefined Matroid := Boolean => M -> (
 	if M.cache.?storedRepresentation then (
 		A := M.cache.storedRepresentation;
 		if numcols A =!= #M.groundSet or rank A =!= rank M then (
-			if debugLevel > 0 then printerr("isWellDefined: storedRepresentation is inaccurate");
+			if debugLevel > 0 then printerr("isWellDefined: storedRepresentation is invalid");
 			return false
 		);
 	);
@@ -234,15 +234,15 @@ indicesOf (List, List) := List => (E, L) -> ( -- L: list of lists
 	H := hashTable apply(#E, i -> E_i => i);
 	L/(l -> set(l/(i -> H#i)))
 )
-indicesOf (List, Sequence) := List => (E, L) -> ( -- L: sequence of sets
-	H := hashTable apply(#E, i -> E_i => i);
-	toList(L/(l -> l/(i -> H#i)))
-)
+-- indicesOf (List, Sequence) := List => (E, L) -> ( -- L: sequence of sets
+	-- H := hashTable apply(#E, i -> E_i => i);
+	-- toList(L/(l -> l/(i -> H#i)))
+-- )
 indicesOf (Matroid, List) := List => (M, L) -> (
 	if #L == 0 then return {};
 	if not M.cache.?indices then M.cache.indices = hashTable apply(#M.groundSet, i -> M_i => i);
 	if not M.cache.indices#?(L#0) then (
-		if debugLevel > 0 then printerr("indicesOf: " | toString(L#0) | " is not a member of " | toString(M_*) | ". Treating " | toString(L#0) | " as an index (cf. 'help groundSet') ...");
+		if debugLevel > 0 then printerr("indicesOf: " | toString(L#0) | " is not a member of " | toString(M_*) | ". Treating " | toString(L#0) | " as an index (cf. 'help groundSet')...");
 		L
 	) else L/(l -> M.cache.indices#l)
 )
@@ -353,13 +353,16 @@ latticeOfFlats Matroid := Poset => M -> (
 		E := M.groundSet;
 		F01 := flats M;
 		F2 := drop(drop(F01, 1), -1);
+		if debugLevel > 0 then printerr("latticeOfFlats: Finding transitive closure of precomputed relations...");
 		scan(#F2 - #H, i -> (
 			f := F2#(-(#H)-1-i);
 			scan(toList(set flatten apply(keys M.cache#"flatsRelationsTable"#f, k -> keys M.cache#"flatsRelationsTable"#k) - keys M.cache#"flatsRelationsTable"#f), k -> M.cache#"flatsRelationsTable"#f#k = 1);
 		));
 		M.cache#"flatsRelationsTable"#(F01#0) = new MutableHashTable from apply(F01, f -> (f,1));
+		if debugLevel > 0 then printerr("latticeOfFlats: Creating relations matrix...");
 		M.cache#"flatsRelationsMatrix" = matrix apply(F01, f -> apply(F01, f1 -> if M.cache#"flatsRelationsTable"#f#?f1 then 1 else 0));
-		if debugLevel > 0 then printerr("latticeOfFlats: relations matrix has rank " | toString(rank M.cache#"flatsRelationsMatrix"));
+		if debugLevel > 1 then printerr("latticeOfFlats: relations matrix has rank " | toString(rank M.cache#"flatsRelationsMatrix"));
+		if debugLevel > 0 then printerr("latticeOfFlats: Creating relation pairs...");
 		sort flatten apply(keys M.cache#"flatsRelationsTable", k -> (
 			k0 := sort keys k;
 			apply((keys M.cache#"flatsRelationsTable"#k - set{k})/keys/sort, f -> {k0,f})
@@ -436,9 +439,11 @@ hasMinor (Matroid, Matroid) := Boolean => opts -> (M, N) -> (
 	if n > m or rank N > rank M or #bases N > #bases M then return false;
 	if opts.Strategy === "flats" and isSimple N then (
 		v := fVector N;
-		possibleFlats := flats(M, rank N);
-		for f in select(possibleFlats, f -> rank_M f == rank M - rank N) do (
-			if any(1..<rank N, i -> #select(possibleFlats, F -> rank_M F == rank M - rank N + i and isSubset(f, F)) < v#i) then continue;
+		truncatedLattice := select(flats(M, rank N), f -> rank_M f >= rank M - rank N);
+		possibleFlats := select(truncatedLattice, f -> rank_M f == rank M - rank N);
+		truncatedLattice = truncatedLattice - set possibleFlats;
+		for f in possibleFlats do (
+			if any(1..<rank N, i -> #select(truncatedLattice, F -> rank_M F == rank M - rank N + i and isSubset(f, F)) < v#i) then continue;
 			Mf := M/f;
 			for Y in independentSets(dual Mf, m - n - #f) do (
 				if areIsomorphic(N, Mf \ Y) then (
