@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.4.11",
-	Date => "April 29, 2022",
+	Version => "1.4.12",
+	Date => "May 1, 2022",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -377,14 +377,16 @@ dual Matroid := Matroid => {} >> opts -> M -> (
 	if M.cache.?dual then M.cache.dual else M.cache.dual = (
 		D := matroid(M_*, (bases M)/(b -> M.groundSet - b));
 		D.cache.dual = M;
-		if M.cache.?storedRepresentation then try (
+		if M.cache.?storedRepresentation then ( try (
 			(r, A) := (rank M, reducedRowEchelonForm M.cache.storedRepresentation);
 			pivs := hashTable((a,b) -> a, pivots A);
 			nonpivs := sort toList(M.groundSet - values pivs);
 			perm := inversePermutation(apply(r, i -> pivs#i) | nonpivs);
-			setRepresentation(D, ((-1)*transpose submatrix(A, toList(0..<r), nonpivs) | id_((ring A)^(#M_*-r)))_perm);
-		);
-		D
+			setRepresentation(D, ((-1)*transpose submatrix(A, toList(0..<r), nonpivs) | id_((ring A)^(#M_*-r)))_perm)
+		) else (
+			if debugLevel > 0 then printerr "dual: could not compute induced dual representation";
+			D 
+		)) else D
 	)
 )
 
@@ -421,7 +423,7 @@ Matroid \ List := (M, S) -> deletion(M, S)
 
 contraction = method()
 contraction (Matroid, List) := Matroid => (M, S) -> contraction(M, set indicesOf(M, S))
-contraction (Matroid, Set) := Matroid => (M, S) -> dual(deletion(dual M, S))
+contraction (Matroid, Set) := Matroid => (M, S) -> ( D := dual M; dual deletion(D, S) ) -- necessary to prevent error with represented matroids over rings that reducedRowEchelonForm cannot handle (e.g. ZZ)
 Matroid / Set := (M, S) -> contraction(M, S)
 Matroid / List := (M, S) -> contraction(M, S)
 
@@ -809,7 +811,7 @@ tuttePolynomial (Matroid, Ring) := RingElement => memoize((M, R) -> (
 		tuttePolynomial(deletion(M, c), R) + tuttePolynomial(contraction(M, c), R)
 	)
 ))
-tuttePolynomial Matroid := RingElement => M -> tuttePolynomial(M, tuttePolynomialRing)
+tuttePolynomial Matroid := RingElement => M -> tuttePolynomial(matroid(M_*, bases M), tuttePolynomialRing) -- avoids computing induced representations for deletions/contractions, when M has a storedRepresentation
 
 tutteEvaluate = method()
 tutteEvaluate (Matroid, Thing, Thing) := Thing => (M, a, b) -> (
@@ -1106,7 +1108,7 @@ specificMatroid String := Matroid => name -> (
 		matroid(id_((ZZ/3)^4) | matrix{{0,1,1,1},{1,0,1,1},{1,1,0,1},{1,1,1,0}})
 	) else if name == "T12" then (
 		matroid(id_((ZZ/2)^6) | matrix{{1,1,0,0,0,1},{1,0,0,0,1,1},{0,0,0,1,1,1},{0,0,1,1,1,0},{0,1,1,1,0,0},{1,1,1,0,0,0}})
-	) else error "specificMatroid: Name string must be one of: fano/F7, nonfano/F7-, vamos, pappus, nonpappus, nondesargues, betsyRoss, AG32, AG32', C5, F8, J, L8, O7, P6, P7, P8, P8=, R6, R8, R9, R9A, R9B, R10, R12, S8, S5612, T8, T12, U24, V8+"
+	) else error "specificMatroid: Name string must be one of: fano/F7, nonfano/F7-, vamos, pappus, nonpappus, nondesargues, betsyRoss, AG32, AG32', C5, F8, J, L8, O7, P6, P7, P8, P8=, Q3(GF(3)*), Q6, Q8, R6, R8, R9, R9A, R9B, R10, R12, S8, S5612, T8, T12, U24, V8+"
 )
 specificMatroid Symbol := Matroid => s -> specificMatroid toString s
 

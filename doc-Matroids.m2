@@ -353,8 +353,8 @@ doc ///
 		Text
 			If E is a set and C is a collection of subsets of E such that 
 			(i) no two elements of C are comparable, and (ii): for C1, C2 in
-			C and $e \in &nbsp; C1 \cap&nbsp;C2$, there exists $C3 \in &nbsp;
-			C$ with $C \subseteq&nbsp;(C1 \cup&nbsp;C2) - e$, then C is the
+			C and $e \in C1 \cap C2$, there exists $C3 \in  
+			C$ with $C \subseteq (C1 \cup C2) - e$, then C is the
 			set of circuits of a matroid on E. Property (ii) is called the
 			circuit elimination axiom, and these characterize the collections
 			of subsets of E which can be circuits for a matroid on E. This
@@ -391,9 +391,11 @@ doc ///
 doc ///
 	Key
 		groundSet
+		(groundSet, Matroid)
 	Headline
 		(internal) ground set
 	Usage
+		groundSet M
 		M.groundSet
 	Inputs
 		M:Matroid
@@ -404,9 +406,9 @@ doc ///
 		Text
 			Returns the internal representation of the ground set.
 			
-			Important: read the following if you encounter errors when 
-			specifying subsets of a matroid (e.g. 
-			restriction/deletion/contraction, rank of subset, etc.)
+			Important: read the following if you encounter warnings/errors 
+			when specifying subsets of a matroid (e.g. 
+			restriction/deletion/contraction, ranks of subset, etc.)
 			
 			For a matroid M, there are 2 important differences between 
 			M.groundSet and the elements of M (given by 
@@ -757,16 +759,16 @@ doc ///
 			which is an independent set
 		e:ZZ
 			an index, or an element in M, such that 
-			$I \cup&nbsp;\{e\}$ is dependent
+			$I \cup \{e\}$ is dependent
 	Outputs
 		:Set
 			the fundamental circuit of e with respect to I
 	Description
 		Text
 			If I is an independent set I, and e is an element such
-			that $I \cup&nbsp;\{e\}$ is dependent (in particular
+			that $I \cup \{e\}$ is dependent (in particular
 			e is not in I), then there is a unique circuit contained in 
-			$I \cup&nbsp;\{e\}$, called the fundamental circuit of e 
+			$I \cup \{e\}$, called the fundamental circuit of e 
 			with respect to I, which moreover contains e.
 			Every circuit is the fundamental circuit of some element 
 			with respect to some basis.
@@ -781,7 +783,7 @@ doc ///
 			
 			This method does not perform any checks (e.g. 
 			whether $I$ is independent, or if $e$ is not in $I$). 
-			If $I \cup&nbsp;\{e\}$ is independent, then 
+			If $I \cup \{e\}$ is independent, then 
 			(if debugLevel is greater than 0) a warning is
 			printed, and @TO null@ is returned. In the example below, 
 			the elements with indices 2 and 3 are parallel (indeed, both 
@@ -1029,12 +1031,12 @@ doc ///
 	Headline
 		flats of a matroid
 	Usage
-		flats(M, r)
+		flats(M, s)
 		flats M
 	Inputs
 		M:Matroid
-		r:ZZ
-			the target rank (optional)
+		s:ZZ
+			a target corank (optional)
 	Outputs
 		:List
 	Description
@@ -1049,10 +1051,11 @@ doc ///
 			>= 3), the isomorphism type of the lattice is already a
 			complete invariant.
 			
-			If a target rank r is provided, then this method computes 
-			closures of independent sets of size r. This may be slower 
-			than simply computing all flats, and then selecting those
-			of rank r.
+			If a target corank s is provided, then this method computes 
+			all intersections of s distinct hyperplanes. This is guaranteed to 
+			contain all flats of rank = rank M - s (cf. Oxley, Prop. 1.7.8), 
+			and may be useful if the lattice of flats is large, and only the 
+			upper portion is required (such as in the Scum theorem).
 			
 		Example
 			M = matroid({a,b,c,d},{{a,b},{a,c}})
@@ -1060,13 +1063,9 @@ doc ///
 			netList flats M
 		
 		Text
-			If no target rank is provided, this method computes flats by 
-			iteratively intersecting 
-			@TO2{(hyperplanes, Matroid), "hyperplanes"}@ of 
-			M: every flat of corank k (i.e. of 
-			@TO2{(rank, Matroid), "rank"}@ = rank M - k) 
-			can be expressed as an intersection of k hyperplanes 
-			(cf. Oxley, Prop. 1.7.8). Thus if hyperplanes of M have 
+			In general, this method computes flats by iteratively 
+			intersecting @TO2{(hyperplanes, Matroid), "hyperplanes"}@ 
+			of M. Thus if hyperplanes of M have 
 			been precomputed, then this function is typically much 
 			faster.
 			
@@ -1509,7 +1508,7 @@ doc ///
 			isBinary U48
 	SeeAlso
 		hasMinor
-		representationOf
+		getRepresentation
 ///
 
 doc ///
@@ -1536,12 +1535,13 @@ doc ///
 			Let M = (E, B) be a matroid with bases B. If there is a 
 			subset S of E that is both a @TO2{circuits, "circuit"}@ 
 			and a @TO2{(hyperplanes, Matroid), "hyperplane"}@ of 
-			M, then the set $B \cup&nbsp;\{S\}$ is the set of bases
+			M, then the set $B \cup \{S\}$ is the set of bases
 			of a matroid on E, called the relaxation of M by S.
 			
 			If no set S is provided, then this function will take S 
 			to be a random circuit-hyperplane (the first in lexicographic
-			order).
+			order). If no circuit-hyperplanes exist, then an error is 
+			produced.
 			
 			Many interesting matroids arise as relaxations of other
 			matroids: e.g. the non-Fano matroid is a relaxation of the
@@ -1552,10 +1552,6 @@ doc ///
 			P = specificMatroid "pappus"
 			NP = specificMatroid "nonpappus"
 			NP == relaxation(P, set{6,7,8})
-	Caveat
-		Note that relaxation does not change the ground set. Thus e.g.
-		@TO representationOf@ will return the same for both the Fano and
-		non-Fano matroids.
 ///
 
 doc ///
@@ -1665,9 +1661,9 @@ doc ///
 			the direct sum of M and N
 	Description
 		Text
-			The direct sum of M and N has ground set equal to the 
-			disjoint union of those of M and N, and bases equal to 
-			the union of bases of M and N.
+			The direct sum of M and N is a matroid with ground set equal 
+			to the disjoint union of the ground sets of M and N, and bases 
+			equal to the union of bases of M and N.
 			
 		Example
 			S = uniformMatroid(2,3) ++ uniformMatroid(1,3)
@@ -1790,6 +1786,7 @@ doc ///
 	SeeAlso
 		(isConnected, Matroid)
 		getSeparation
+		sum2
 ///
 
 doc ///
@@ -1843,12 +1840,128 @@ doc ///
 
 doc ///
 	Key
-		representationOf
-		(representationOf, Matroid)
+		seriesConnection
+		(seriesConnection, Matroid, Matroid)
 	Headline
-		represents a realizable/graphic matroid
+		series connection of two matroids
 	Usage
-		representationOf M
+		seriesConnection(M, N)
+	Inputs
+		M:Matroid
+		N:Matroid
+	Outputs
+		:Matroid
+			the series connection of M and N with basepoint 0
+	Description
+		Text
+			This function returns the series connection of two given
+			matroids M and N (cf. Oxley, Section 7.1).
+			
+			It is always assumed that the common basepoint
+			of M and N is the first element in the respective ground sets,
+			i.e. the element with index 0. (To form a series connection 
+			using a different basepoint, one can first @TO relabel@ 
+			M and/or N.)
+			
+			This method includes series extensions as a special case: 
+			a series extension of M is a series connection of M with U(1,2).
+			
+		Example
+			G = graph({{0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,0},{0,2},{0,3},{0,4},{1,3},{3,5},{3,6}})
+			M = matroid G
+			seriesConnection(M, uniformMatroid(1,2))
+	SeeAlso
+		parallelConnection
+		sum2
+///
+
+doc ///
+	Key
+		parallelConnection
+		(parallelConnection, Matroid, Matroid)
+	Headline
+		parallel connection of two matroids
+	Usage
+		parallelConnection(M, N)
+	Inputs
+		M:Matroid
+		N:Matroid
+	Outputs
+		:Matroid
+			the parallel connection of M and N with basepoint 0
+	Description
+		Text
+			This function returns the parallel connection of two given
+			matroids M and N (cf. Oxley, Section 7.1). Parallel 
+			connection is dual to series connection: namely, the parallel 
+			connection of M and N is the dual of the series connection of 
+			M* and N*.
+			
+			It is always assumed that the common basepoint
+			of M and N is the first element in the respective ground sets,
+			i.e. the element with index 0. (To form a parallel connection 
+			using a different basepoint, one can first @TO relabel@ 
+			M and/or N.)
+			
+		Example
+			G = graph({{0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,0},{0,2},{0,3},{0,4},{1,3},{3,5},{3,6}})
+			M = matroid G
+			parallelConnection(M, uniformMatroid(1,2))
+	SeeAlso
+		parallelConnection
+		sum2
+///
+
+doc ///
+	Key
+		sum2
+		(sum2, Matroid, Matroid)
+	Headline
+		2-sum of matroids
+	Usage
+		sum2(M, N)
+	Inputs
+		M:Matroid
+		N:Matroid
+	Outputs
+		:Matroid
+			the 2-sum of M and N with basepoint 0
+	Description
+		Text
+			This function returns the 2-sum of two given
+			matroids M and N (cf. Oxley, Section 7.1).
+			
+			It is always assumed that the common basepoint
+			of M and N is the first element in the respective ground sets,
+			i.e. the element with index 0. (To form a 2-sum using a 
+			different basepoint, one can first @TO relabel@ M and/or N.)
+			Moreover, it is necessary that the basepoint 0 is not a loop or
+			coloop in either M or N. Under this assumption, the 2-sum of M
+			and N is equal to the contraction of the series connection
+			of M and N by 0 (alternatively, the deletion of the parallel 
+			connection of M and N by 0).
+			
+			The operation of 2-sum is important in higher matroid 
+			connectivity: a connected matroid is 3-connected iff it cannot
+			be expressed as a 2-sum of smaller matroids.
+			
+		Example
+			M = sum2(specificMatroid "fano", uniformMatroid(2,4))
+			isConnected M
+			is3Connected M
+	SeeAlso
+		seriesConnection
+		is3Connected
+///
+
+doc ///
+	Key
+		getRepresentation
+		(getRepresentation, Matroid)
+	Headline
+		retrieves stored representation
+	Usage
+		getRepresentation M
 	Inputs
 		M:Matroid
 	Outputs
@@ -1856,24 +1969,67 @@ doc ///
 			a representation of M (either a matrix or a graph)
 	Description
 		Text
-			Given a realizable matroid whose ground set elements are 
-			vectors, returns the matrix with those column vectors. If the 
-			matroid is graphical, then the graph with edge set equal to 
-			the ground set is returned (without loops or parallel edges,
-			since the Graphs package does not support these).
+			For a matroid created from a matrix, this function 
+			provides a user-friendly way to access the original matrix.
+			Similarly, for a matroid created from a (simple) graph,
+			this function returns the graph used to create the matroid.
+			
+			Note that some constructions applied to a matroid M 
+			(such as taking dual, or minors) will automatically compute 
+			an induced representation (if a representation of M exists),
+			which can be viewed with this function.
 			
 		Example
-			A = random(ZZ^3,ZZ^5)
+			A = random(QQ^3,QQ^5)
 			M = matroid A
-			A == representationOf M
+			A == getRepresentation M
 			K4 = completeGraph 4
 			M4 = matroid K4
-			representationOf M4 === K4
+			getRepresentation M4 === K4
+			N = M / set{0}
+			getRepresentation N
 	SeeAlso
+		setRepresentation
 		matroid
-		affineGeometry
-		projectiveGeometry
-		specificMatroid
+///
+
+doc ///
+	Key
+		setRepresentation
+		(setRepresentation, Matroid, Matrix)
+		storedRepresentation
+	Headline
+		stores user-defined representation
+	Usage
+		setRepresentation(M, A)
+	Inputs
+		M:Matroid
+		A:Matrix
+	Outputs
+		:Matroid
+			with a stored representation
+	Description
+		Text
+			This function provides a way for the user to specify a 
+			representation of a matroid (given by a matrix).
+			The matrix is cached in the matroid 
+			(under M.cache.storedRepresentation), and can be retrieved
+			using @TO getRepresentation@.
+			
+			This function will also create a custom rank function for 
+			the matroid, using the given representation (this is also
+			cached in the matroid, under M.cache.rankFunction). 
+			This can lead to faster computations of rank.
+			
+		Example
+			A = random(QQ^4,QQ^6)
+			M = uniformMatroid(4, 6)
+			setRepresentation(M, A)
+			getRepresentation M
+			keys M.cache
+	SeeAlso
+		getRepresentation
+		matroid
 ///
 
 doc ///
@@ -2121,13 +2277,13 @@ doc ///
 			universal with respect to satisfying a deletion-contraction 
 			recurrence. Indeed, one way to define the Tutte polynomial 
 			of a matroid is: if $M$ is a matroid consisting of $a$ loops 
-			and $b$ coloops, then T_M(x, y) = x^ay^b, and if 
-			$e \in&nbsp;M$ is neither a loop nor a coloop, then 
-			T_M(x, y) := T_{M/e}(x, y) + T_{M\e}(x, y), where M\e is the 
-			@TO deletion@ of M with respect to $\{e\}$, and M/e is the 
-			@TO contraction@ of M with respect to $\{e\}$. Many invariants of
-			a matroid can be determined by substituting values into its Tutte
-			polynomial - cf. @TO tutteEvaluate@.
+			and $b$ coloops, then $T_M(x, y) = x^ay^b$, and if 
+			$e \in M$ is neither a loop nor a coloop, then 
+			$T_M(x, y) := T_{M \backslash e}(x, y) + T_{M/e}(x, y)$, where 
+			M\e is the @TO deletion@ of M with respect to $\{e\}$, and 
+			M/e is the @TO contraction@ of M with respect to $\{e\}$. 
+			Many invariants of a matroid can be determined by substituting
+			values into its Tutte polynomial - cf. @TO tutteEvaluate@.
 			
 		Example
 			tuttePolynomial matroid completeGraph 4
@@ -2136,6 +2292,8 @@ doc ///
 		tutteEvaluate
 		(characteristicPolynomial, Matroid)
 		chromaticPolynomial
+		deletion
+		contraction
 ///
 
 doc ///
@@ -2348,112 +2506,6 @@ doc ///
 
 doc ///
 	Key
-		uniformMatroid
-		(uniformMatroid, ZZ, ZZ)
-	Headline
-		uniform matroid
-	Usage
-		U = uniformMatroid(k, n)
-	Inputs
-		k:ZZ
-		n:ZZ
-	Outputs
-		:Matroid
-			the uniform matroid of rank k on n elements
-	Description
-		Text
-			The uniform matroid of rank k has as bases all 
-			size k subsets. The ground set is $\{0, ..., n-1\}$.
-			
-		Example
-			U35 = uniformMatroid(3,5)
-			peek U35
-///
-
-doc ///
-	Key
-		affineGeometry
-		(affineGeometry, ZZ, ZZ)
-	Headline
-		affine geometry of rank n+1 over F_p
-	Usage
-		M = affineGeometry(n, p)
-	Inputs
-		n:ZZ
-			the dimension of the ambient vector space
-		p:ZZ
-			a prime
-	Outputs
-		:Matroid
-			the affine geometry of rank n+1 over F_p
-	Description
-		Text
-			The affine geometry of rank n+1 over F_p is the matroid
-			whose ground set consists of all vectors in a vector 
-			space over F_p of dimension n, where independence 
-			is given by affine independence, i.e. vectors are dependent 
-			iff there is a linear combination equaling zero in which 
-			the coefficients sum to zero (equivalently, the vectors
-			are placed in the hyperplane x_0 = 1 in a vector space
-			of dimension n+1, with ordinary linear
-			independence in the larger space). 
-			
-		Example
-			M = affineGeometry(3, 2)
-			M === specificMatroid "AG32"
-			circuits M
-			representationOf M
-	SeeAlso
-		projectiveGeometry
-///
-
-doc ///
-	Key
-		projectiveGeometry
-		(projectiveGeometry, ZZ, ZZ)
-	Headline
-		projective geometry of dimension n over F_p
-	Usage
-		M = projectiveGeometry(n, p)
-	Inputs
-		n:ZZ
-			the dimension of the projective space
-		p:ZZ
-			a prime
-	Outputs
-		:Matroid
-			the projective geometry of dimension n over F_p
-	Description
-		Text
-			The projective geometry of dimension n over F_p is the 
-			matroid whose ground set consists of points in an 
-			n-dimensional projective space over F_p. The matroid
-			structure is precisely the 
-			@TO2{simpleMatroid, "simple matroid"}@ associated
-			to the realizable matroid of (F_p)^(n+1) (i.e. all vectors in an 
-			(n+1)-dimensional vector space over F_p) - the origin
-			(being a loop) has been removed, and a representative
-			is chosen for all parallel classes (= lines).
-			
-			Note that projective space has a stratification into affine
-			spaces (one of each smaller dimension). In particular,
-			deleting any hyperplane from PG(n, p) gives AG(n, p).
-			
-		Example
-			PG22 = projectiveGeometry(2, 2)
-			PG22 == specificMatroid "fano"
-			A = transpose sub(matrix toList(((3:0)..(3:2-1))/toList), ZZ/2) -- all vectors in (ZZ/2)^3
-			areIsomorphic(PG22, simpleMatroid matroid A)
-			PG32 = projectiveGeometry(3, 2)
-			representationOf PG32
-			H = first hyperplanes PG32
-			areIsomorphic(affineGeometry(3, 2), PG32 \ H)
-	SeeAlso
-		affineGeometry
-///
-
-doc ///
-	Key
 		getCycles
 		(getCycles, Graph)
 	Headline
@@ -2622,7 +2674,7 @@ doc ///
 		Text
 			The Chow ring of M is the ring R := QQ[x_F]/(I1 + I2), 
 			where $I1 = (\sum_{i_1\in F} x_F - \sum_{i_2\in F} x_F : i_1, i_2 
-			\in&nbsp;M)$ and $I2 = (x_Fx_{F'} : F, F' incomparable)$, 
+			\in M)$ and $I2 = (x_Fx_{F'} : F, F' incomparable)$, 
 			as $F$ runs over all proper nonempty flats of $M$. This is the 
 			same as the Chow ring of the toric variety associated to the 
 			Bergman fan of M. This ring is an Artinian standard graded 
@@ -2749,15 +2801,268 @@ doc ///
 
 doc ///
 	Key
+		uniformMatroid
+		(uniformMatroid, ZZ, ZZ)
+	Headline
+		uniform matroid
+	Usage
+		U = uniformMatroid(k, n)
+	Inputs
+		k:ZZ
+		n:ZZ
+	Outputs
+		:Matroid
+			the uniform matroid of rank k on n elements
+	Description
+		Text
+			The uniform matroid of rank k has as bases all 
+			size k subsets. The ground set is $\{0, ..., n-1\}$.
+			
+		Example
+			U35 = uniformMatroid(3,5)
+			peek U35
+	SeeAlso
+		specificMatroid
+///
+
+doc ///
+	Key
+		affineGeometry
+		(affineGeometry, ZZ, ZZ)
+	Headline
+		affine geometry of rank n+1 over F_p
+	Usage
+		M = affineGeometry(n, p)
+	Inputs
+		n:ZZ
+			the dimension of the ambient vector space
+		p:ZZ
+			a prime
+	Outputs
+		:Matroid
+			the affine geometry of rank n+1 over F_p
+	Description
+		Text
+			The affine geometry of rank n+1 over F_p is the matroid
+			whose ground set consists of all vectors in a vector 
+			space over F_p of dimension n, where independence 
+			is given by affine independence, i.e. vectors are dependent 
+			iff there is a linear combination equaling zero in which 
+			the coefficients sum to zero (equivalently, the vectors
+			are placed in the hyperplane x_0 = 1 in a vector space
+			of dimension n+1, with ordinary linear
+			independence in the larger space). 
+			
+		Example
+			M = affineGeometry(3, 2)
+			M === specificMatroid "AG32"
+			circuits M
+			getRepresentation M
+	SeeAlso
+		projectiveGeometry
+		specificMatroid
+///
+
+doc ///
+	Key
+		projectiveGeometry
+		(projectiveGeometry, ZZ, ZZ)
+	Headline
+		projective geometry of dimension n over F_p
+	Usage
+		M = projectiveGeometry(n, p)
+	Inputs
+		n:ZZ
+			the dimension of the projective space
+		p:ZZ
+			a prime
+	Outputs
+		:Matroid
+			the projective geometry of dimension n over F_p
+	Description
+		Text
+			The projective geometry of dimension n over F_p is the 
+			matroid whose ground set consists of points in an 
+			n-dimensional projective space over F_p. The matroid
+			structure is precisely the 
+			@TO2{simpleMatroid, "simple matroid"}@ associated
+			to the realizable matroid of (F_p)^(n+1) (i.e. all vectors in an 
+			(n+1)-dimensional vector space over F_p) - the origin
+			(being a loop) has been removed, and a representative
+			is chosen for all parallel classes (= lines).
+			
+			Note that projective space has a stratification into affine
+			spaces (one of each smaller dimension). In particular,
+			deleting any hyperplane from PG(n, p) gives AG(n, p).
+			
+		Example
+			PG22 = projectiveGeometry(2, 2)
+			PG22 == specificMatroid "fano"
+			A = transpose sub(matrix toList(((3:0)..(3:2-1))/toList), ZZ/2) -- all vectors in (ZZ/2)^3
+			areIsomorphic(PG22, simpleMatroid matroid A)
+			PG32 = projectiveGeometry(3, 2)
+			getRepresentation PG32
+			H = first hyperplanes PG32
+			areIsomorphic(affineGeometry(3, 2), PG32 \ H)
+	SeeAlso
+		affineGeometry
+		specificMatroid
+///
+
+doc ///
+	Key
+		thetaMatroid
+		(thetaMatroid, ZZ)
+	Headline
+		theta matroid
+	Usage
+		M = thetaMatroid n
+	Inputs
+		n:ZZ
+	Outputs
+		:Matroid
+			the theta matroid
+	Description
+		Text
+			The family of theta matroids appears in Oxley, p. 663.
+			For a given n, thetaMatroid n has 2n elements and rank n.
+			
+			A notable feature of this family is that thetaMatroid n is 
+			representable over a field iff the field has at least n - 1
+			elements (a property also shared by uniformMatroid(2, n)).
+			
+		Example
+			M = thetaMatroid 3
+			areIsomorphic(M, matroid completeGraph 4)
+	SeeAlso
+		specificMatroid
+///
+
+doc ///
+	Key
+		spike
+		(spike, ZZ)
+		(spike, ZZ, List)
+		binarySpike
+		(binarySpike, ZZ)
+	Headline
+		spike matroid
+	Usage
+		M = spike r
+		M = spike(r, L)
+		M = binarySpike r
+	Inputs
+		r:ZZ
+		L:List
+			of circuits
+	Outputs
+		:Matroid
+			a (tipped) r-spike
+	Description
+		Text
+			The family of spikes appears in Oxley, p. 661-662.
+			For a given r, every r-spike has 2r+1 elements and rank r.
+			The ground set consists of a tip 0, and r legs {0, 1, 2}, 
+			{0, 3, 4}, ..., {0, 2*r-1, 2*r} (each of which is a circuit).
+			
+			Deleting the tip 0 gives a matroid of rank r on 2r elements
+			called a tipless r-spike.
+			
+			The optional input L should be a list of additional circuits,
+			subject to certain additional conditions to be a spike.
+			If no additional circuits are provided, then the spike is
+			called free.
+			
+			Out of all possible r-spikes, there is a a unique one which is
+			binary (i.e. representable over the field of 2 elements): 
+			this is returned by the function @TO binarySpike@.
+			
+		Example
+			M = binarySpike 5
+			getRepresentation M
+			N = M \ set{0}
+			areIsomorphic(N, dual N)
+			N1 = (spike 5) \ set{0}
+			N1 == dual N1
+	SeeAlso
+		specificMatroid
+///
+
+doc ///
+	Key
+		swirl
+		(swirl, ZZ)
+	Headline
+		swirl matroid
+	Usage
+		M = swirl r
+	Inputs
+		r:ZZ
+	Outputs
+		:Matroid
+			a free swirl
+	Description
+		Text
+			The family of swirls appears in Oxley, p. 664.
+			The rank-r free swirl has 2r elements and rank r.
+			
+		Example
+			areIsomorphic(swirl 3, uniformMatroid_3 6)
+			M = swirl 4
+			betti ideal M
+			M == dual M
+			getSeparation(M, 3)
+	SeeAlso
+		specificMatroid
+///
+
+doc ///
+	Key
+		wheel
+		(wheel, ZZ)
+		whirl
+		(whirl, ZZ)
+	Headline
+		wheels/whirls
+	Usage
+		M = wheel r
+		M = whirl r
+	Inputs
+		r:ZZ
+	Outputs
+		:Matroid
+			a rank r wheel or whirl
+	Description
+		Text
+			The families of wheels and whirls appears in Oxley, p. 659-660.
+			The rank-r wheel is the graphic matroid of the 
+			@TO2{wheelGraph, "wheel graph"}@ with r outer vertices, and has 
+			2r elements.
+			The rank-r whirl is the unique relaxation of the rank-r wheel
+			(and thus also has 2r elements).
+			
+		Example
+			M = wheel 3
+			M == matroid wheelGraph 4
+			N = whirl 3
+			areIsomorphic(N, relaxation M)
+	SeeAlso
+		wheelGraph
+		specificMatroid
+///
+
+doc ///
+	Key
 		specificMatroid
 		(specificMatroid, String)
+		(specificMatroid, Symbol)
 	Headline
 		creates built-in matroid
 	Usage
 		specificMatroid(S)
 	Inputs
 		S:String
-			the name of the matroid
+			or symbol, the name of the matroid
 	Outputs
 		:Matroid
 	Description
@@ -2775,15 +3080,50 @@ doc ///
 				"vamos",
 				"pappus",
 				"nonpappus",
+				"nondesargues",
+				"betsyRoss",
 				"AG32",
+				"AG32'",
+				"F8",
+				"J",
+				"L8",
+				"O7",
+				"P6",
+				"P7",
+				"P8",
+				"P8=",
+				"Q3(GF(3)*)",
+				"Q6",
+				"Q8",
+				"R6",
+				"R8",
+				"R9",
 				"R9A",
 				"R9B",
 				"R10",
-				"betsyRoss"
+				"R12",
+				"S8",
+				"S5612",
+				"T8",
+				"T12"
 			}
 		Text
+			The matroids provided in this function (together with the
+			infinite families given by the functions
+			@TO affineGeometry@,
+			@TO projectiveGeometry@,
+			@TO binarySpike@,
+			@TO spike@,
+			@TO swirl@,
+			@TO wheel@,
+			@TO whirl@,
+			@TO thetaMatroid@,
+			@TO uniformMatroid@)
+			includes all "interesting matroids" listed
+			in Oxley, p. 639 - 664 (except for the general Dowling geometry).
+		
 			Many of these matroids are interesting for their 
-			non-representability or duality properties:
+			(non-)representability or duality properties:
 		Code
 			UL {
 				"U24 is the uniform matroid of rank 2 on 4 elements, i.e. the
@@ -2820,18 +3160,16 @@ doc ///
 			F7 = specificMatroid "fano"
 			all(F7_*, x -> areIsomorphic(matroid completeGraph 4, F7 \ {x}))
 			AG32 = specificMatroid "AG32"
-			representationOf AG32
+			getRepresentation AG32
 			AG32 == dual AG32
 			R10 = specificMatroid "R10"
-			representationOf R10
+			getRepresentation R10
 			areIsomorphic(R10 \ set{0}, matroid completeMultipartiteGraph {3,3})
 	Caveat
-		Notice that the ground set is a subset of $\{0, ..., n-1\}$ &nbsp;
+		Notice that the ground set is a subset of $\{0, ..., n-1\}$
 		rather than $\{1, ..., n\}$.
 	SeeAlso
 		matroid
-		affineGeometry
-		uniformMatroid
 		allMatroids
 ///
 
@@ -2857,10 +3195,15 @@ doc ///
 		Text
 			This method returns a list of matroids on n elements of rank r,
 			for small n (currently, n <= 9). This list is complete for
-			isomorphism types of matroids on n elements, i.e. every matroid
-			on n elements is 
+			isomorphism types of rank r matroids on n elements, i.e. every
+			matroid on n elements of rank r is 
 			@TO2{(areIsomorphic, Matroid, Matroid), "isomorphic"}@ to a 
 			unique matroid in this list.
+			
+			This function will silently switch inputs so that the rank r
+			is the smaller of the two inputs (i.e. allMatroids(3,6) and 
+			allMatroids(6,3) return the same output). If no rank r is
+			provided, then all matroids on n elements are returned.
 			
 			One can perform many verifications using this method:
 			
@@ -2985,12 +3328,5 @@ doc ///
 ///
 
 undocumented {
-	(net, Matroid),
-	-- storedRepresentation,
-	seriesConnection,
-	-- (seriesConnection, Matroid, Matroid),
-	parallelConnection,
-	-- (parallelConnection, Matroid, Matroid)
-	sum2
-	-- (sum2, Matroid, Matroid)
+	(net, Matroid)
 }
