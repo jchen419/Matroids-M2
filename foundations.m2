@@ -1,6 +1,8 @@
 needsPackage "Matroids"
 
+------------------------------------------
 -- Pasture definitions
+------------------------------------------
 
 Pasture = new Type of HashTable
 Pasture.synonym = "pasture"
@@ -36,7 +38,9 @@ pastureMorphism (Pasture, Pasture, List) := List => (P1, P2, L) -> apply(L, m ->
 
 PastureMorphism * PastureMorphism := (phi1, phi2) -> if phi2.target == phi1.source then pastureMorphism(phi2.source, phi1.target, phi1.map * phi2.map) else error "pastureMorphism: Expected phi1.source to equal phi2.target"
 
+------------------------------------------
 -- Pasture constructions
+------------------------------------------
 
 pasture = method()
 pasture (Matrix, Matrix, List) := Pasture => (A0, eps0, L) -> (
@@ -114,6 +118,68 @@ V5 = pasture(matrix{{4},{0}}, matrix{{2},{0}}, {{matrix{{1},{0}}, matrix{{0},{1}
 assert areIsomorphic(V5, pasture([x,i], "-i^2,x-i,-1-i*x^2"))
 ///
 
+------------------------------------------
+-- General pasture helper functions
+------------------------------------------
+
+hexesFromPairs = method()
+hexesFromPairs (Matrix, Matrix, List) := List => (A, eps, L) -> (
+    hexTable := new MutableHashTable;
+    for p in L list (
+        fp := {p#0 % A, p#1 % A};
+        if hexTable#?(set fp) then continue;
+        h := {fp, {(-fp#1) % A, (eps + fp#0 - fp#1) % A}, {(-fp#0) % A, (eps - fp#0 + fp#1) % A}};
+        scan(h, pair -> hexTable#(set pair) = 1);
+        h
+    )
+)
+
+fundEltPartners = method()
+fundEltPartners (List, Thing) := List => (L, A) -> (
+    unique for p in L list if p#0 === A then p#1 else if p#1 === A then p#0 else continue
+)
+fundEltPartners (Pasture, Thing) := List => (P, e) -> (
+    if not P.cache#?"partnerTable" then P.cache#"partnerTable" = (
+    -- H := if P.cache#?"partnerTable" then P.cache#"partnerTable" else P.cache#"partnerTable" = (
+        FP := unique flatten P.hexagons;
+        FE := unique flatten FP;
+        hashTable apply(FE, e -> e => fundEltPartners(FP, e))
+    );
+    if P.cache#"partnerTable"#?e then P.cache#"partnerTable"#e else {}
+)
+
+freePartPasture = method()
+freePartPasture Pasture := List => P -> (
+    A := presentation P.multiplicativeGroup;
+    positions(toList(0..<numrows A), i -> A^{i} == 0)
+)
+
+hexTypes = method()
+hexTypes (Pasture, Boolean) := List => (P, doTally) -> (
+    A := presentation P.multiplicativeGroup;
+    F3 := select(P.hexagons, h -> #unique flatten h == 1);
+    D := select(P.hexagons - set F3, h -> any(h, p -> #unique p == 1));
+    H := select(P.hexagons - set F3 - set D, h -> (p := unique flatten h; #p == 2 and all(p, e -> 3*e % A == P.epsilon)));
+    U := P.hexagons - set F3 - set D - set H;
+    if doTally then hashTable {("U", #U), ("D", #D), ("H", #H), ("F3", #F3)} else {U, D, H, F3}
+)
+hexTypes Pasture := HashTable => P -> hexTypes(P, true)
+
+pairTypes = method()
+pairTypes Pasture := HashTable => P -> (
+    L := fullRankSublattice P;
+    (n1, n2, n3) := (0, 0, 0);
+    for p in L do (
+        r := p#0;
+        if r#2 > r#1 then n3 = n3 + 1 else if r#1 > r#0 then n1 = n1 + 1 else n2 = n2 + 1
+    );
+    hashTable {("type 1", n1), ("type 2", n2), ("type 3", n3), ("type 4", #flatten P.cache#"type4Data")}
+)
+
+------------------------------------------
+-- General abelian group functions
+------------------------------------------
+
 myMinPres = method()
 myMinPres Matrix := Sequence => A -> (
     recursionLimitStore := recursionLimit;
@@ -126,6 +192,49 @@ myMinPres Matrix := Sequence => A -> (
     (submatrix'(g,rows,cols),submatrix'(ch,rows,))
 )
 myMinPres Module := Sequence => M -> myMinPres presentation M
+
+liftTorsion = method()
+liftTorsion (Matrix, Module, List, List) := Matrix => (X, G, denoms, K) -> ( 
+    -- finds all lifts of a matrix X over QQ into a finite abelian group G
+    -- assumes G is given by a minimal presentation (i.e. coker of diagonal matrix with nonzero diagonal entries)
+    -- numrows X should == numgens G, numcols X should == #denoms
+    if debugLevel > 0 then <<endl<<"liftTorsion: "<<(X,G,denoms,K)<<endl;
+    if not G.cache#?denoms then G.cache#denoms = new MutableList;
+    torsCands := for i to (numcols mingens G) - 1 list (
+        n := (presentation G)_(i,i);
+        for j to (numcols X) - 1 list (
+            (a, b) := (numerator(X_(i,j)*denoms#j), denoms#j);
+            c := for k to n-1 do if (b*k - a) % n === 0 then break k;
+            if c === null then return false;
+            g := gcd(n, denoms#j);
+            if not G.cache#denoms#?j then G.cache#denoms#j = apply(g-1, k -> (k+1)*(n//g));
+            c
+        )
+    );
+)
+
+abelianGroupHom = method()
+abelianGroupHom (Module, Module) := List => (G1, G2) -> (
+    -- assumes G1, G2 are finite abelian groups
+    H := minPres Hom(G1, G2);
+    if H == 0 then return {map(ZZ^(numgens G2), ZZ^(numgens G1), 0)};
+    ords := apply(numgens H, i -> (presentation H)_(i,i));
+    homElts := apply(toList(fold(apply(ords, a -> set(0..<a)), (a,b) -> a**b)), s -> transpose matrix {{deepSplice s}});
+    homElts/(f -> matrix homomorphism(H.cache.pruningMap * map(H, ZZ^1, f)))
+)
+
+TEST ///
+G1 = coker diagonalMatrix{2,6}
+G2 = coker diagonalMatrix{2}
+G3 = coker diagonalMatrix{5}
+assert(#abelianGroupHom(G1,G1) == 48)
+assert(#abelianGroupHom(G1,G2 ++ G3) == 4)
+assert(#abelianGroupHom(G1,G3) == 1)
+///
+
+------------------------------------------
+-- (Fiber) products/coproducts
+------------------------------------------
 
 fiberProduct = method()
 fiberProduct (Matrix, Matrix) := Module => (f1, f2) -> (
@@ -218,10 +327,12 @@ U = foundation U24
 areIsomorphic(U ** U, foundation(U24 ++ U24))
 ///
 
+------------------------------------------
 -- Foundations
+------------------------------------------
 
 minTopLeft := A -> A_({{0,1,2,3},{1,0,3,2},{2,3,0,1},{3,2,1,0}}#(minPosition A))
--- the output of getPerm is {a, b} means sigma^a * rho^b where sigma = (13) and rho = (123)
+-- the output of getPerm is {a, b}, which means sigma^a * rho^b where sigma = (13) and rho = (123)
 getPerm := (A, f) -> (
     B := minTopLeft apply(A, f);
     p1 := if B_1 < B_2 then (-1, 1) else (1, -1);
@@ -277,29 +388,6 @@ h3 := (i, m) -> m_(delete(i-1,#m))
 chooseHyp := (L,f,g) -> L#(position(L,h -> isSubset (f+g,h)))
 containmentTable := (LF,LH) -> hashTable apply(LH, h -> set select(LF, f -> isSubset (f,h)) => h)
 
-hexesFromPairs = method()
-hexesFromPairs (Matrix, Matrix, List) := List => (A, eps, L) -> (
-    hexTable := new MutableHashTable;
-    for p in L list (
-        fp := {p#0 % A, p#1 % A};
-        if hexTable#?(set fp) then continue;
-        h := {fp, {(-fp#1) % A, (eps + fp#0 - fp#1) % A}, {(-fp#0) % A, (eps - fp#0 + fp#1) % A}};
-        scan(h, pair -> hexTable#(set pair) = 1);
-        h
-    )
-    -- Old version
-    -- hexList := {};
-    -- for p in L do (
-        -- fp := {p#0 % A, p#1 % A};
-        -- if any(hexList, h -> compareHex(fp, h)) then continue;
-        -- hexList = append(hexList, {fp, {(-fp#1) % A, (eps + fp#0 - fp#1) % A}, {(-fp#0) % A, (eps - fp#0 + fp#1) % A}});
-    -- );
-    -- hexList
-)
-
-compareHex = method()
-compareHex (List, List) := Boolean => (fp, hex) -> any(hex, p -> fp == p or fp == reverse p) -- fp and hex should be in normal form
-
 kruskalSpanningForest = method()
 kruskalSpanningForest Graph := Graph => G -> (
     comps := new MutableList from (vertices G/(v -> set{v}));
@@ -328,7 +416,7 @@ foundation Matroid := Foundation => opts -> M -> (
     debugLevel = 0;
     r := rank M;
     cacheList := {};
-    strat := toLower if opts.Strategy === null then "bases" else opts.Strategy;
+    strat := toLower toString if opts.Strategy === null then "bases" else opts.Strategy;
     if dbgLevelStore > 0 then << "foundation: Using strategy " << strat << endl;
     if strat === "hyperplanes" then (
         hypMap := hashTable apply(#hyperplanes M, i -> (hyperplanes M)#i => i);
@@ -450,7 +538,6 @@ foundation Matroid := Foundation => opts -> M -> (
             l = apply(l, q -> ch_(basesMap#(p#0 + q)));
             {l#0 + l#1 - l#2 - l#3, l#4 + l#5 - l#2 - l#3}/matrix
         )));
-        -- genTable = basesMap;
         cacheList = {("pruningMapB", ch), ("genTableB", basesMap), ("imDegMap", imDegMap), ("spanningForest", onePos)};
     );
     debugLevel = dbgLevelStore;
@@ -471,12 +558,8 @@ saveFoundation (Matroid, String) := String => (M, fileName) -> (
     for k in delete(cache, keys F) do outputFile << toString k << " => " << toString(F#k) << ", " << endl;
     outputFile << "cache => new CacheTable from {" << endl;
     k0 := if F.cache#?"genTableB" then "genTableB" else "genTableH";
-    for k in keys F.cache - set{k0} do outputFile << "\"" << k << "\" => " << toExternalString F.cache#k << ", " << endl;
+    for k in keys F.cache - set{k0} do outputFile << "\"" << k << "\" => " << toString F.cache#k << ", " << endl;
     outputFile << "\"" << k0 << "\" => " << toString F.cache#k0 << endl;
-    -- outputFile << "\"genTable\" => " << toString(F.cache#"genTable") << ", " << endl;
-    -- outputFile << "\"numU24minors\" => " << toString(F.cache#"numU24minors") << ", " << endl;
-    -- outputFile << "\"pruningMap\" => " << toExternalString(F.cache#"pruningMap") << ", " << endl;
-    -- outputFile << "\"strategy\" => " << toExternalString(F.cache#"strategy") << endl;
     outputFile << "}" << endl << "}" << close;
     fileName
 )
@@ -494,13 +577,9 @@ U26 = foundation uniformMatroid(2,6)
 assert Equation((#freePartPasture U26, #U26.hexagons), (9, 15))
 ///
 
--- Morphisms
-
-freePartPasture = method()
-freePartPasture Pasture := List => P -> (
-    A := presentation P.multiplicativeGroup;
-    positions(toList(0..<numrows A), i -> A^{i} == 0)
-)
+------------------------------------------
+-- Old morphisms code
+------------------------------------------
 
 changeBase = (b, n) -> (
     if n < b then return {(0, n)};
@@ -508,6 +587,36 @@ changeBase = (b, n) -> (
     a := floor(n/b^k);
     {(k, a)} | changeBase(b, n - a*b^k)
 )
+
+compareHex = method()
+compareHex (List, List) := Boolean => (fp, hex) -> any(hex, p -> fp == p or fp == reverse p) -- fp and hex should be in normal form
+
+subTorsion = method()
+subTorsion (Matrix, Module) := Matrix => (X, G) -> ( 
+    -- attempts to substitute a matrix over QQ into a finite abelian group G (column by column)
+    -- assumes G is given by a minimal presentation
+    -- number of rows of X should equal numgens G
+    matrix for i to (numcols mingens G) - 1 list (
+        n := (presentation G)_(i,i);
+        for j to (numcols X) - 1 list (
+            x := X_(i,j);
+            (a, b) := (numerator x, denominator x);
+            if gcd(b, n) != 1 then return false;
+            for k to b-1 do if (a+n*k)%b == 0 then break ((a+n*k)//b) % n
+        )
+    )
+)
+
+TEST ///
+X1 = matrix {{1/3},{1/5}}
+X2 = matrix {{1/3},{3/2}}
+X3 = X1 | X1
+G = coker diagonalMatrix{2,6}
+assert(subTorsion(X1,G) == matrix{{1},{5}})
+assert(subTorsion(X2,G) == false)
+assert(subTorsion(X3,G) == matrix{{1,1},{5,5}})
+assert(subTorsion(matrix{{-1/5}}, coker matrix{{2}}) == matrix{{1}})
+///
 
 fullRankSublattice1 = method(Options => {Order => 2, Shuffle => false})
 fullRankSublattice1 Pasture := List => opts -> P -> (
@@ -611,87 +720,9 @@ morphisms1 (Pasture, Pasture) := List => opts -> (P, P') -> (
     )
 )
 
-subTorsion = method()
-subTorsion (Matrix, Module) := Matrix => (X, G) -> ( 
-    -- attempts to substitute a matrix over QQ into a finite abelian group G (column by column)
-    -- assumes G is given by a minimal presentation
-    -- number of rows of X should equal numgens G
-    matrix for i to (numcols mingens G) - 1 list (
-        n := (presentation G)_(i,i);
-        for j to (numcols X) - 1 list (
-            x := X_(i,j);
-            (a, b) := (numerator x, denominator x);
-            if gcd(b, n) != 1 then return false;
-            for k to b-1 do if (a+n*k)%b == 0 then break ((a+n*k)//b) % n
-        )
-    )
-)
-
-TEST ///
-X1 = matrix {{1/3},{1/5}}
-X2 = matrix {{1/3},{3/2}}
-X3 = X1 | X1
-G = coker diagonalMatrix{2,6}
-assert(subTorsion(X1,G) == matrix{{1},{5}})
-assert(subTorsion(X2,G) == false)
-assert(subTorsion(X3,G) == matrix{{1,1},{5,5}})
-assert(subTorsion(matrix{{-1/5}}, coker matrix{{2}}) == matrix{{1}})
-///
-
-abelianGroupHom = method()
-abelianGroupHom (Module, Module) := List => (G1, G2) -> (
-    H := minPres Hom(G1, G2);
-    if H == 0 then return {map(ZZ^(numgens G2), ZZ^(numgens G1), 0)};
-    ords := apply(numgens H, i -> (presentation H)_(i,i));
-    homElts := apply(toList(fold(apply(ords, a -> set(0..<a)), (a,b) -> a**b)), s -> transpose matrix {{deepSplice s}});
-    homElts/(f -> matrix homomorphism(H.cache.pruningMap * map(H, ZZ^1, f)))
-)
-
-TEST ///
-G1 = coker diagonalMatrix{2,6}
-G2 = coker diagonalMatrix{2}
-G3 = coker diagonalMatrix{5}
-assert(#abelianGroupHom(G1,G1) == 48)
-assert(#abelianGroupHom(G1,G2 ++ G3) == 4)
-assert(#abelianGroupHom(G1,G3) == 1)
-///
-
-fundEltPartners = method()
-fundEltPartners (List, Thing) := List => (L, A) -> (
-    unique for p in L list if p#0 === A then p#1 else if p#1 === A then p#0 else continue
-)
-fundEltPartners (Pasture, Thing) := List => (P, e) -> (
-    if not P.cache#?"partnerTable" then P.cache#"partnerTable" = (
-    -- H := if P.cache#?"partnerTable" then P.cache#"partnerTable" else P.cache#"partnerTable" = (
-        FP := unique flatten P.hexagons;
-        FE := unique flatten FP;
-        hashTable apply(FE, e -> e => fundEltPartners(FP, e))
-    );
-    if P.cache#"partnerTable"#?e then P.cache#"partnerTable"#e else {}
-)
-
-hexTypes = method()
-hexTypes (Pasture, Boolean) := List => (P, doTally) -> (
-    A := presentation P.multiplicativeGroup;
-    F3 := select(P.hexagons, h -> #unique flatten h == 1);
-    D := select(P.hexagons - set F3, h -> any(h, p -> #unique p == 1));
-    H := select(P.hexagons - set F3 - set D, h -> (p := unique flatten h; #p == 2 and all(p, e -> 3*e % A == P.epsilon)));
-    U := P.hexagons - set F3 - set D - set H;
-    if doTally then hashTable {("U", #U), ("D", #D), ("H", #H), ("F3", #F3)} else {U, D, H, F3}
-)
-hexTypes Pasture := HashTable => P -> hexTypes(P, true)
-
-
-pairTypes = method()
-pairTypes Pasture := HashTable => P -> (
-    L := fullRankSublattice P;
-    (n1, n2, n3) := (0, 0, 0);
-    for p in L do (
-        r := p#0;
-        if r#2 > r#1 then n3 = n3 + 1 else if r#1 > r#0 then n1 = n1 + 1 else n2 = n2 + 1
-    );
-    hashTable {("type 1", n1), ("type 2", n2), ("type 3", n3), ("type 4", #flatten P.cache#"type4Data")}
-)
+------------------------------------------
+-- Morphisms
+------------------------------------------
 
 fullRankSublattice = method()
 fullRankSublattice Pasture := List => P -> (
@@ -708,25 +739,24 @@ fullRankSublattice Pasture := List => P -> (
         r := 0;
         T := new MutableList from {0, 0, 0};
         while true do (
-            -- A := if #currentPairs == 0 then map(ZZ^n,ZZ^0,0) else matrix{flatten(currentPairs/first/last)};
             A := if #currentPairs == 0 then map(ZZ^n,ZZ^0,0) else A | ( p := first last currentPairs; if p#0#0 == r+1 then matrix{p#1} else p#1#1 );
             r = rank A^freePart;
             if r == s then break;
             (type1Pair, type2Pairs, type3Pairs, type4Hexes) := (null, {}, {}, {});
-	    for h in P.hexagons - set(currentPairs/last) - set flatten S do (
-		t := {rank((A | h#0#0)^freePart), rank((A | h#0#1)^freePart), rank((A | h#0#0 | h#0#1)^freePart)};
-		if set t === set{r} then type4Hexes = append(type4Hexes, h);
-		if type1Pair =!= null then continue;
-		if set t === set{r, r+1} then type1Pair = {{sort t, if t === {r,r+1,r+1} then h#0 else reverse h#0}, h}
-		else if set t === set{r+1} then ( -- hexagon with type 2 pair may also have type 1 pair
-		    d := {rank((A | h#1#0)^freePart), rank((A | h#1#1)^freePart)};
-		    if set d === set{r,r+1} then type1Pair = {{{r, r+1, r+1}, if d === {r,r+1} then h#1 else reverse h#1}, h}
-		    else type2Pairs = append(type2Pairs, {{t, h#0}, h});
-		) else if set t === set{r+1, r+2} then type3Pairs = append(type3Pairs, {{t, h#0}, h});
-	    );
-	    S = append(S, type4Hexes);
-	    newPair := if type1Pair =!= null then ( T#0 = T#0 + 1; type1Pair )
-	    else if #type2Pairs > 0 then ( T#1 = T#1 + 1; type2Pairs#0 )
+            for h in P.hexagons - set(currentPairs/last) - set flatten S do (
+                t := {rank((A | h#0#0)^freePart), rank((A | h#0#1)^freePart), rank((A | h#0#0 | h#0#1)^freePart)};
+                if set t === set{r} then type4Hexes = append(type4Hexes, h);
+                if type1Pair =!= null then continue;
+                if set t === set{r, r+1} then type1Pair = {{sort t, if t === {r,r+1,r+1} then h#0 else reverse h#0}, h}
+                else if set t === set{r+1} then ( -- hexagon with type 2 pair may also have type 1 pair
+                    d := {rank((A | h#1#0)^freePart), rank((A | h#1#1)^freePart)};
+                    if set d === set{r,r+1} then type1Pair = {{{r, r+1, r+1}, if d === {r,r+1} then h#1 else reverse h#1}, h}
+                    else type2Pairs = append(type2Pairs, {{t, h#0}, h});
+                ) else if set t === set{r+1, r+2} then type3Pairs = append(type3Pairs, {{t, h#0}, h});
+            );
+            S = append(S, type4Hexes);
+            newPair := if type1Pair =!= null then ( T#0 = T#0 + 1; type1Pair )
+            else if #type2Pairs > 0 then ( T#1 = T#1 + 1; type2Pairs#0 )
             else if #type3Pairs > 0 then ( S = append(S, {}); T#2 = T#2 + 1; type3Pairs#0 )
             else break;
             currentPairs = append(currentPairs, newPair);
@@ -766,11 +796,15 @@ fullRankSublattice Pasture := List => P -> (
             (B*coeffs - c*e, coeffs, c)
         ))));
         otherPairs = otherPairs | delete(null, flatten apply(#S, i -> apply(#(S#i), j -> if any(type4Data#i#j, t -> abs last t != 1) then S#i#j#0)));
+        Q := minPres coker(L^freePart);
         P.cache#"latticeGensMatrix" = L;
         P.cache#"generatingRules" = generatingRules;
         P.cache#"otherPairs" = otherPairs; -- pairs not contained in lattice L (i.e. abs(coeff) > 1)
         P.cache#"type4Data" = type4Data;
-        P.cache#"quotientLattice" = minPres coker(L^freePart);
+        P.cache#"quotientLattice" = Q;
+        P.cache#"quotientPruningMap" = transpose matrix(Q.cache.pruningMap);
+        P.cache#"latticeGensMatrixInverse" = inverse sub(L^freePart, QQ);
+        P.cache#"latticeDenoms" = apply(entries transpose P.cache#"latticeGensMatrixInverse", col -> lcm(col/denominator));
         debugLevel = dbgLevelStore;
         G
     )
@@ -780,19 +814,16 @@ morphisms = method(Options => {FindOne => false, FindIso => false}) -- Assumes f
 morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     P1star := presentation P1.multiplicativeGroup;
     P2star := presentation P2.multiplicativeGroup;
-    fundPairsP1 := unique flatten P1.hexagons;
-    fundEltsP1 := unique flatten fundPairsP1;
     fundPairsP2 := unique flatten P2.hexagons;
     fundEltsP2 := unique flatten fundPairsP2;
-    fundPairsP2unordered := unique(fundPairsP2 | fundPairsP2/reverse);
-    fundPairsP2unorderedSet := set(fundPairsP2unordered/set);
-    fundPairsP2set := set(fundPairsP2/set);
     if opts.FindIso then (
-        if not(#P1.hexagons == #P2.hexagons and #fundEltsP1 == #fundEltsP2 and P1star == P2star) then (
+        if not(#P1.hexagons == #P2.hexagons and #unique flatten flatten P1.hexagons == #fundEltsP2 and P1star == P2star) then (
             if debugLevel > 0 then print "morphisms: Pastures have different numerical data!";
             return {};
         ) else if P1 == P2 then return {pastureMorphism(P1, P2, id_(P1.multiplicativeGroup))};
     );
+    fundPairsP2unordered := unique(fundPairsP2 | fundPairsP2/reverse);
+    fundPairsP2set := set(fundPairsP2/set);
     freePart1 := freePartPasture P1;
     freePart2 := freePartPasture P2;
     (r1, r2) := (#freePart1, #freePart2);
@@ -807,7 +838,8 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     torsLatticeGens := generatingRules/first;
     otherPairs := P1.cache#"otherPairs";
     type4Data := P1.cache#"type4Data";
-    B := inverse sub(A^freePart1, QQ);
+    B := P1.cache#"latticeGensMatrixInverse";
+    denoms := P1.cache#"latticeDenoms";
     
     -- Prepare torsion maps
     T1 := coker(P1star^torsPart1);
@@ -817,8 +849,10 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     H := select(abelianGroupHom(T1, T2), f -> ((((f | eta1) * P1.epsilon) || eta2) - P2.epsilon) % P2star == 0);
     H = apply(H, phi -> phi || map(ZZ^r2, ZZ^(#torsPart1), 0));
     Q := P1.cache#"quotientLattice";
-    K := apply(abelianGroupHom(Q, T2), f -> f * transpose matrix(Q.cache.pruningMap));
+    rho := P1.cache#"quotientPruningMap";
+    K := apply(abelianGroupHom(Q, T2), f -> f * rho);
     T0P2 := if T2 == 0 then map(ZZ^(numrows K#0), ZZ^(numcols K#0), 0) else null;
+    -- T0P2 := if T2 == 0 then K else null;
     if debugLevel > 0 then print("morphisms: (#phi, #psi): " | net(#H, #K));
     if debugLevel > 0 then print("morphisms: Quotient lattice is: "| net Q);
     z0 := map(ZZ^n2, ZZ^0, 0);
@@ -827,7 +861,8 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     pastureMorphism(P1, P2, unique flatten for phi in H list (
         D := phi * A^torsPart1;
         torsType4 = apply(#type4Data, i -> apply(type4Data#i, t -> {phi*t#0#0^torsPart1, phi*t#1#0^torsPart1}));
-        if not all(torsType4#0, p -> any(fundPairsP2, pair -> set pair === set{p#0 % P2star, p#1 % P2star})) then continue;
+        -- if not all(torsType4#0, p -> any(fundPairsP2, pair -> set pair === set{p#0 % P2star, p#1 % P2star})) then continue;
+        if not all(torsType4#0, p -> member(set{p#0 % P2star, p#1 % P2star}, fundPairsP2set)) then continue;
         delta := apply(r1, i -> phi * torsLatticeGens#i);
         C0 := z0;
         level := 0; -- level should always be the level of current node
@@ -843,7 +878,6 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                 C0 = C0 | candidates#level#0;
                 rule := last generatingRules#level;
                 newCandidates := if rule === 0 then fundEltsP2 -- first member of type 3
-                -- else if rule === 1 then fundEltPartners(fundPairsP2, candidates#level#0) -- second member of type 3
                 else if rule === 1 then fundEltPartners(P2, candidates#level#0) -- second member of type 3
                 else ( -- type 1/2 pairs
                     coeff := flatten entries rule;
@@ -862,8 +896,8 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                         data := type4Data#(level+1)#i;
                         torsPair := torsType4#(level+1)#i;
                         v := set apply(2, j -> ((C0 | c)*data#j#1 - torsPair#j) % P2star);
-                        if data#0#2 == 1 and data#1#2 == 1 then member(v, fundPairsP2unorderedSet) else ( 
-                        << "morphisms: Coefficient for type 4 pair not equal to 1" << endl;
+                        if data#0#2 == 1 and data#1#2 == 1 then member(v, fundPairsP2set) else (
+                        if debugLevel > 0 then << endl << "morphisms: Type 4 data: " << data << endl;
                         any(fundPairsP2unordered, p -> set{p#0*data#0#2 % P2star, p#1*data#1#2 % P2star} === v)
                         )
                     ))
@@ -876,14 +910,17 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                 C := C0 | candidates#r1#0;
                 candidates#r1 = drop(candidates#r1, 1);
                 E := (C - D) * B;
-                torsE := if T0P2 =!= null then T0P2 else subTorsion(E^torsPart2, T2);
-                if torsE === false then continue;
                 freeE := try sub(E^freePart2, ZZ);
                 if freeE === null then continue;
+                -- torsECands := if T0P2 =!= null then T0P2 else liftTorsion(E^torsPart2, T2, denoms, K);
+                -- for psi in torsECands list (
+                    -- M := phi | (psi || freeE);
+                torsE := if T0P2 =!= null then T0P2 else subTorsion(E^torsPart2, T2);
+                if torsE === false then continue;
                 for psi in K list (
                     M := phi | ((torsE + psi) || freeE);
                     if opts.FindIso and abs det M != 1 then continue;
-                    if not all(otherPairs, p -> member(set {M*p#0 % P2star, M*p#1 % P2star}, fundPairsP2set)) then continue;
+                    if not all(otherPairs, p -> member(set{M*p#0 % P2star, M*p#1 % P2star}, fundPairsP2set)) then continue;
                     if opts.FindOne or opts.FindIso then return {pastureMorphism(P1, P2, M)} else M
                 )
             )
@@ -1019,7 +1056,17 @@ assert(areIsomorphic(foundation M, foundation type2#2) and areIsomorphic(foundat
 assert Equation(12, #isoTypes(type2/foundation))
 ///
 
--- Finding representation from pasture morphisms
+TEST /// -- lifting torsion in morphisms
+P1 = pasture([x,y], "x+y, x^3*y^5 + x^2*y^6")
+P2 = pasture([w,z], "w^3*z^5 + w^2*z^6, w+z")
+P3 = pasture([x], "-x^3,x+x^(-1),x^2+x^4")
+assert Equation(8, #morphisms(P1, P3))
+assert Equation(8, #morphisms(P2, P3))
+///
+
+------------------------------------------
+-- Representations via pasture morphisms
+------------------------------------------
 
 representation = method()
 representation (Matroid, PastureMorphism) := Matrix => (M, phi) -> (
@@ -1071,7 +1118,9 @@ assert Equation(2, #morphisms(foundation N2, pasture GF 4))
 assert all(representations(N2, GF 4), A -> N2 == matroid A)
 ///
 
+------------------------------------------
 -- Positive Orientability (cf. Thm 5.2 in https://arxiv.org/pdf/1310.4159.pdf)
+------------------------------------------
 
 isNonCrossing = method()
 isNonCrossing (List, List) := Boolean => (C, D) -> (  -- assumes C and D are disjoint
@@ -1109,13 +1158,11 @@ M = matroid(toList(0..<6), {{0,1,2},{0,3,4},{1,3,5}}, EntryMode => "nonbases")
 assert not isPositivelyOrientable M
 ///
 
--- Natural map from the foundation of minor
+------------------------------------------
+-- Natural map from foundation of minor
+------------------------------------------
 
--- hyperplaneCorrespondenceTable = method()
 hyperplaneCorrespondenceTable := (M, N, e) -> (
--- hyperplaneCorrespondenceTable (Matroid, Matroid, ZZ) := HashTable => (M, N, e) -> (
--- hyperplaneCorrespondenceTable (Matroid, ZZ, String) := HashTable => (M, e, mode) -> (
-    -- N := if mode === "delete" then M \ set{e} else M / set{e};
     (HM, HN) := (hyperplanes M, hyperplanes N);
     hashTable apply(HN, h -> ( H := h/(i -> if i < e then i else i+1); (h, if member(H, HM) then H else H + set{e})))
 )
@@ -1135,26 +1182,23 @@ inducedMapFromMinor (Matroid, ZZ, String) := PastureMorphism => (M, e, mode) -> 
         id_(ZZ^(numgens Fstar))_{0} | (F.cache#"pruningMapH")_(inducedMinors | apply(inducedMinors, i -> i + F.cache#"numU24minors"))
     ) else (
         A = id_(ZZ^(numgens Gstar)) // (G.cache#"pruningMapB");
-        -- Delete coloop: add e to all bases of N
-        -- Delete non-coloop: inclusion
-        -- Contract loop: identity
-        -- Contract non-loop: add e to all bases of N
+        addEltToMinor := (mode == "contract" and not member(e, loops M)) or (mode == "delete" and member(e, coloops M));
         negTable := hashTable((pairs G.cache#"genTableB")/reverse);
         I := id_(ZZ^(#bases M));
         b0 := first bases N;
         E := id_(ZZ^(#N_*));
         D := matrix{apply(G.cache#"spanningForest", e -> E_{e#1} - E_{e#0})};
         J := matrix{apply(G.cache#"spanningForest", e -> 1)} || map(ZZ^(#bases N-1), ZZ^(#G.cache#"spanningForest"), 0);
-        delta := id_(ZZ^1) ++ (id_(ZZ^(#bases N)) - matrix{apply(bases N, b -> (
+        K := matrix{apply(#bases N, e -> 1)} || map(ZZ^(#bases N-1), ZZ^(#bases N), 0);
+        delta := id_(ZZ^1) ++ (id_(ZZ^(#bases N)) - K - matrix{apply(bases N, b -> (
             v := transpose matrix{apply(#N_*, i -> if (member(i, b) and not member(i, b0)) then 1 else if (not member(i, b) and member(i, b0)) then -1 else 0)};
             (submatrix'(G.cache#"imDegMap",{0},{0}) - J) * (v // D)
         ))});
         gamma := matrix{apply(#bases N, j -> (
             b := negTable#(j+1)/(i -> if i < e then i else i+1);
-            if ((mode == "contract" and not member(e, loops M)) or (mode == "delete" and member(e, coloops M))) then b = b + set{e};
+            if addEltToMinor then b = b + set{e};
             I_{F.cache#"genTableB"#b - 1}
         ))};
-        << netList toList({delta, gamma}) << endl;
         F.cache#"pruningMapB" * (id_(ZZ^1) ++ gamma) * delta
     );
     pastureMorphism(G, F, B*A)
@@ -1162,13 +1206,21 @@ inducedMapFromMinor (Matroid, ZZ, String) := PastureMorphism => (M, e, mode) -> 
 
 TEST ///
 Q6 = specificMatroid "Q6"
-assert areIsomorphic(Q6 / set{5}, uniformMatroid_2 5)
-assert Equation(-1, det inducedMapFromMinor(Q6, 5, "contract"))
-assert areIsomorphic(Q6 \ set{0}, uniformMatroid_3 5)
-assert Equation(-1, det inducedMapFromMinor(Q6, 0, "delete"))
+strat = "hyperplanes"
+foundation(Q6, Strategy => strat)
+N1 = Q6 / set{5}
+assert areIsomorphic(N1, uniformMatroid_2 5)
+phi1 = inducedMapFromMinor(Q6, 5, "contract")
+assert(0 != det phi1 and member(phi1, morphisms(foundation(N1, Strategy => strat), foundation Q6)))
+N2 = Q6 \ set{0}
+assert areIsomorphic(N2, uniformMatroid_3 5)
+phi2 = inducedMapFromMinor(Q6, 0, "delete")
+assert(0 != det phi2 and member(phi2, morphisms(foundation(N2, Strategy => strat), foundation Q6)))
 ///
 
+------------------------------------------
 -- (Quasi-)Fixed/cofixed elements
+------------------------------------------
 
 isQuasiFixed = (M, e) -> coker (inducedMapFromMinor(M, e, "delete")).map == 0
 
@@ -1181,7 +1233,9 @@ isQuasiFree = M -> (
     all(select(toList(0..<#M_*), e -> isQuasiFixed_M e), e -> not is3Connected cosimpleMatroid (M\{e})) and  all(select(toList(0..<#M_*), e -> isQuasiCofixed_M e), e -> not is3Connected simpleMatroid (M/{e}))
 )
 
+------------------------------------------
 -- Fundamental diagram
+------------------------------------------
 
 fundamentalDiagram = method()
 fundamentalDiagram Matroid := Sequence => M -> (
@@ -1233,7 +1287,9 @@ M = specificMatroid "Q6"
 assert(coveringNumber(M, 1) == (3, true))
 ///
 
+------------------------------------------
 -- Single-element representable extensions
+------------------------------------------
 
 extinF4 = method()
 extinF4 (Matrix) := List => A -> (
@@ -1264,6 +1320,7 @@ extinOrientF4 (Matroid) := List => M -> (
 )
 
 end--
+------------------------------------------
 
 -- specific matroids
 F7 = specificMatroid "fano"
@@ -1441,9 +1498,8 @@ set includedIndices
 -- compute limits/colimits of pastures
 -- determining if a pasture is a tensor product of specified pastures
 -- compute symmetry quotients?
--- Handle quotient by full rank sublattice correctly
--- Minimize recomputation of foundation with different Strategy values
--- inducedMapFromMinor with Strategy => "bases"
+-- Lift torsion correctly
+-- Natural map between different presentations of foundation
 
 restart
 load "foundations.m2"
