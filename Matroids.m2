@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.4.12",
-	Date => "May 1, 2022",
+	Version => "1.5.0",
+	Date => "May 4, 2022",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -71,6 +71,15 @@ export {
 	"getIsos",
 	"tutteEvaluate",
 	"chromaticPolynomial",
+	"getCycles",
+	"basisIndicatorMatrix",
+	"maxWeightBasis",
+	"idealChowRing",
+	"Presentation",
+	"ChowRingOptions",
+	"FlatOrder",
+	"cogeneratorChowRing",
+	"idealOrlikSolomonAlgebra",
 	"setRepresentation",
 	"getRepresentation",
 	"storedRepresentation",
@@ -83,15 +92,6 @@ export {
 	"swirl",
 	"wheel",
 	"whirl",
-	"getCycles",
-	"basisIndicatorMatrix",
-	"maxWeightBasis",
-	"idealChowRing",
-	"Presentation",
-	"ChowRingOptions",
-	"FlatOrder",
-	"cogeneratorChowRing",
-	"idealOrlikSolomonAlgebra",
 	"specificMatroid",
 	"allMatroids",
 	"allMinors",
@@ -113,8 +113,8 @@ matroid = method(Options => {EntryMode => "bases", ParallelEdges => {}, Loops =>
 matroid (List, List) := Matroid => opts -> (E, L) -> (
 	if #L > 0 and not instance(L#0, Set) then L = indicesOf(E, L);
 	G := set(0..<#E);
-	B := if opts.EntryMode == "nonbases" then if #L == 0 then {G} else subsets(G, #(L#0)) - set L
-	else if opts.EntryMode == "bases" then if #L == 0 then error "matroid: There must be at least one basis" else L
+	B := if opts.EntryMode == "bases" then ( if #L == 0 then error "matroid: There must be at least one basis" else L )
+	else if opts.EntryMode == "nonbases" then ( if #L == 0 then {G} else subsets(G, #(L#0)) - set L )
 	else if opts.EntryMode == "circuits" then (
 		x := getSymbol "x";
 		R := QQ(monoid[x_0..x_(#E-1)]);
@@ -134,7 +134,7 @@ matroid (List, List) := Matroid => opts -> (E, L) -> (
 	) else if opts.EntryMode == "nonbases" then M.cache.nonbases = L;
 	M
 )
-matroid List := Matroid => opts -> B -> matroid(unique flatten B, B, opts)
+matroid List := Matroid => opts -> L -> matroid(sort unique flatten L, L, opts)
 matroid Matrix := Matroid => opts -> A -> (
 	k := rank A;
 	setRepresentation(matroid(apply(numcols A, i -> A_{i}), (select(subsets(numcols A, k), S -> rank A_S == k))/set), A)
@@ -277,7 +277,10 @@ coloops Matroid := List => M -> loops dual M
 independentSets Matroid := List => opts -> M -> unique flatten((bases M)/subsets)
 independentSets (Matroid, ZZ) := List => opts -> (M, r) -> unique flatten(bases M/(b -> subsets(b, r)))
 independentSets (Matroid, List) := List => opts -> (M, S) -> independentSets(M, set indicesOf(M, S))
-independentSets (Matroid, Set) := List => opts -> (M, S) -> bases restriction(M, S)
+independentSets (Matroid, Set) := List => opts -> (M, S) -> ( 
+	H := hashTable transpose({toList(0..<#S)} | {sort keys S});
+	apply(bases restriction(M, S), b -> b/(i -> H#i))
+)
 
 isDependent = method()
 isDependent (Matroid, List) := Boolean => (M, S) -> isDependent(M, set indicesOf(M, S))
@@ -385,7 +388,7 @@ dual Matroid := Matroid => {} >> opts -> M -> (
 			setRepresentation(D, ((-1)*transpose submatrix(A, toList(0..<r), nonpivs) | id_((ring A)^(#M_*-r)))_perm)
 		) else (
 			if debugLevel > 0 then printerr "dual: could not compute induced dual representation";
-			D 
+			D
 		)) else D
 	)
 )

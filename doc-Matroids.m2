@@ -187,7 +187,7 @@ doc ///
 		Text	
 		
 			If no ground set is provided, the ground set is taken to be the 
-			union of the basis/nonbasis/circuit elements. 
+			(sorted) union of the bases/nonbases/circuits. 
 			
 		Example
 			M = matroid {{a,b},{a,c}}
@@ -196,8 +196,9 @@ doc ///
 
 			If a matrix is provided, then the realizable matroid on the 
 			columns of the matrix is returned. The ground set consists of
-			columns of the matrix, and independence is determined by 
-			the method @TO rank@ (to allow flexibility over general rings).
+			columns of the matrix, and independence is determined by the
+			method @TO rank@ (which allows flexibility over general rings
+			understood by M2).
 		
 		Example
 			M = matroid random(ZZ^3, ZZ^5)
@@ -214,13 +215,13 @@ doc ///
 		Text
 		
 			One can use the optional arguments Loops and ParallelEdges
-			to specify loops and parallel edges for the graph, respectively.
-			These options are intended only for use with graphic matroids
-			(since the Graphs package does not provide functionality
-			for loops or parallel edges). ParallelEdges should be given as a
-			list of edges (which are two-element sets of the form set$\{i,j\}$
-			where i, j are vertices in G), and Loops should be given as a 
-			list of vertices where the loops are based.
+			to specify loops and parallel edges for the graph, respectively
+			(as the @TO Graphs@ package does not currently provide 
+			functionality for loops or parallel edges). These options are
+			intended only for use with graphic matroids. ParallelEdges should
+			be given as a list of edges (which are two-element sets of the
+			form set$\{i,j\}$ where i, j are vertices in G), and Loops should
+			be given as a list of vertices where the loops are based.
 			
 		Example
 			M = matroid(completeGraph 3, ParallelEdges => {set{0,1},set{0,1},set{1,2}}, Loops => {0,2})
@@ -229,11 +230,11 @@ doc ///
 		Text
 			
 			If a squarefree monomial ideal is provided, corresponding to a 
-			simplicial complex &Delta; via the Stanley-Reisner correspondence,
-			then the matroid with 
+			simplicial complex $\Delta$ via the Stanley-Reisner
+			correspondence, then the matroid with 
 			@TO2{(independenceComplex, Matroid), "independence complex"}@
-			&Delta; is returned. The ground set consists of the variables in the
-			ring of the ideal.
+			$\Delta$ is returned. The ground set consists of the variables in
+			the ring of the ideal.
 			
 		Example
 			R = QQ[x_0..x_4]
@@ -245,7 +246,7 @@ doc ///
 		This function does not check if (E,B) defines a matroid - see 
 		@TO2{(isWellDefined, Matroid), "isWellDefined"}@.
 	
-		The bases are not stored as subsets of the ground set - the 
+		The bases are not stored as sets of elements of M - rather, the 
 		indices (with respect to the ground set) are stored instead. For more,
 		see @TO groundSet@.
 	SeeAlso
@@ -327,9 +328,9 @@ doc ///
 			which is EntryMode => "bases".
 			
 		Example
-			M = matroid({{0,1,2}, {3,4,5}}, EntryMode => "circuits") -- bowtie graph
+			M = matroid({{0,1,2}, {3,4,5}}, EntryMode => "circuits") -- bowtie graph / 2 disjoint K3's
 			bases M
-			F7 = matroid({{0,1,2},{2,3,4},{2,5,6},{0,4,5},{0,3,6},{1,3,5},{1,4,6}}, EntryMode => "nonbases")
+			F7 = matroid({{0,1,6},{0,2,4},{0,3,5},{1,2,5},{1,3,4},{2,3,6},{4,5,6}}, EntryMode => "nonbases")
 			F7 == specificMatroid "fano"
 	SeeAlso
 		matroid
@@ -410,12 +411,12 @@ doc ///
 			when specifying subsets of a matroid (e.g. 
 			restriction/deletion/contraction, ranks of subset, etc.)
 			
-			For a matroid M, there are 2 important differences between 
+			For a matroid M, there are 2 main differences between 
 			M.groundSet and the elements of M (given by 
 			@TO2{(symbol _*, Matroid), "M_*"}@). First is data 
 			types: M.groundSet is a @TO Set@, and M_* is a @TO List@. 
 			Second, M.groundSet always consists of integers from 0 to n-1, 
-			where n is the number of elements of M: on the other hand,
+			where n is the number of elements of M; on the other hand,
 			the elements of M themselves can be arbitrary (e.g. symbols, 
 			matrices, edges in a graph, etc.).
 			
@@ -618,7 +619,7 @@ doc ///
 			which are in bijection with the minimal generators of the
 			Alexander dual ideal via taking complements.
 			
-			Internally, the ideal of the matroid is a fundamental complete 
+			Internally, the ideal of the matroid is an important complete 
 			invariant, and is heavily used in many algorithms in this package.
 			Accordingly, once the ideal of a matroid is computed, it is 
 			cached in the @TO CacheTable@ of the matroid, which speeds up any 
@@ -631,6 +632,7 @@ doc ///
 			J = dual ideal M
 			J_*/indices
 			bases M
+			betti res ideal matroid completeGraph 4
 			
 	SeeAlso
 		circuits
@@ -866,30 +868,40 @@ doc ///
 
 doc ///
 	Key
-		(independentSets, Matroid)
 		(independentSets, Matroid, ZZ)
+		(independentSets, Matroid)
 	Headline
 		independent subsets of a matroid
 	Usage
-		independentSets M
 		independentSets(M, s)
+		independentSets M
 	Inputs
 		M:Matroid
+		s:ZZ
 	Outputs
 		:List
-			the independent sets in M of size s
+			of independent sets in M
 	Description
 		Text
 			A subset of the ground set is called independent if it is 
 			contained in a @TO2{bases, "basis"}@, or equivalently, 
 			does not contain a @TO2{circuits, "circuit"}@.
-			This method returns all independent subsets of the ground 
-			set of a fixed size $s$. If no size $s$ is given, returns a 
-			list of all independent sets of M.
+			This method returns certain independent subsets of the ground 
+			set, depending on the input:
+			
+			If an integer $s$ is provided, then all independent subsets
+			of size $s$ in $M$ are returned.
+			
+			If a subset $S$ of the ground set of $M$ is given, then all
+			maximal independent subsets of $S$ are returned.
+			
+			If neither a size $s$ nor a subset $S$ is given, then all
+			independent sets of M is returned (which may be quite large).
 			
 		Example
 			M = matroid({a,b,c,d},{{a,b},{a,c}})
 			independentSets(M, 2)
+			independentSets(M, set{1,2,3})
 			netList independentSets M
 			V = specificMatroid "vamos"
 			I3 = independentSets(V, 3)
@@ -978,10 +990,11 @@ doc ///
 			the rank of the same set are (essentially) instant.
 			
 			The user may choose to install a custom rank function for a 
-			matroid (which should take in a list, and output an integer),
-			under {\tt M.cache#"rankFunction"}.
+			matroid (which should take in a list of integers (corresponding
+			to a subset of @TO2{groundSet, "M.groundSet"}@), and output an
+			integer), under {\tt M.cache#"rankFunction"}.
 			This is done automatically when a matroid is constructed from 
-			a matrix or graph.
+			a matrix or graph, or with @TO setRepresentation@.
 			
 		Example
 			M = matroid({a,b,c,d},{{a,b},{a,c}})
@@ -1136,13 +1149,14 @@ doc ///
 	Description
 		Text
 			The lattice of flats of a matroid M is the set of flats of M, 
-			partially ordered by containment; i.e. F1 <= F2 if F1 is 
+			partially ordered by containment; i.e. $F1 \le F2$ if F1 is 
 			contained in F2. The lattice of flats of a matroid is a geometric
 			lattice: i.e. it is atomic (every element is a join of atoms =
-			rank 1 elements) and semimodular (h(x) + h(y) >= h(x &or; y) + 
-			h(x &and; y) for any x, y, where h is the height function =
-			maximum length of a chain from 0). Conversely, every geometric
-			lattice is the lattice of flats of a matroid.
+			rank 1 elements) and semimodular ($h(x) + h(y) \ge h(x \vee y) + 
+			h(x \wedge y)$ for any x, y, where h is the height function =
+			maximum length of a chain from 0, and all maximal chains have 
+			the same length). Conversely, every geometric lattice is the
+			lattice of flats of a matroid.
 			
 			If M and N are @TO2{(isSimple, Matroid), "simple matroids"}@
 			(i.e. no loops or parallel classes) with isomorphic lattice of 
@@ -1154,8 +1168,8 @@ doc ///
 		Text
 		
 			One can also view the lattice of flats, using @TO displayPoset@
-			provided by the @TO Posets@ package (together with the option
-			@TO SuppressLabels@ => false).
+			provided by the @TO Posets@ package (the option
+			@TO SuppressLabels@ may be useful).
 	SeeAlso
 		flats
 		(rank, Matroid)
@@ -1248,6 +1262,19 @@ doc ///
 			V = relaxation(V8plus, set{4,5,6,7})
 			V == dual V
 			areIsomorphic(V, dual V)
+		Text
+		
+			If a matroid has a @TO2{storedRepresentation, "representation"}@
+			stored, then this function will attempt to automatically compute
+			a representation for the dual (whether this works depends on 
+			whether @TO reducedRowEchelonForm@ is implemented for the 
+			underlying ring of the matrix).
+			
+		Example
+			F7 = specificMatroid fano
+			getRepresentation F7
+			M = dual F7
+			getRepresentation M
 ///
 
 doc ///
@@ -1893,7 +1920,7 @@ doc ///
 		Text
 			This function returns the parallel connection of two given
 			matroids M and N (cf. Oxley, Section 7.1). Parallel 
-			connection is dual to series connection: namely, the parallel 
+			connection is dual to @TO seriesConnection@: namely, the parallel 
 			connection of M and N is the dual of the series connection of 
 			M* and N*.
 			
@@ -1908,7 +1935,7 @@ doc ///
 			M = matroid G
 			parallelConnection(M, uniformMatroid(1,2))
 	SeeAlso
-		parallelConnection
+		seriesConnection
 		sum2
 ///
 
@@ -1935,14 +1962,17 @@ doc ///
 			of M and N is the first element in the respective ground sets,
 			i.e. the element with index 0. (To form a 2-sum using a 
 			different basepoint, one can first @TO relabel@ M and/or N.)
-			Moreover, it is necessary that the basepoint 0 is not a loop or
-			coloop in either M or N. Under this assumption, the 2-sum of M
-			and N is equal to the contraction of the series connection
-			of M and N by 0 (alternatively, the deletion of the parallel 
-			connection of M and N by 0).
+			Moreover, it is necessary that the basepoint 0 is not a 
+			@TO2{loops, "loop"}@ or @TO2{coloops, "coloop"}@ in 
+			either M or N. Under these assumptions,
+			the 2-sum of M and N is equal to the @TO contraction@ of the 
+			@TO seriesConnection@ of M and N by 0 (or alternatively, the
+			deletion of the @TO parallelConnection@ of M and N by 0).
 			
 			The operation of 2-sum is important in higher matroid 
-			connectivity: a connected matroid is 3-connected iff it cannot
+			connectivity: a @TO2{(isConnected, Matroid), "connected"}@
+			matroid is @TO2{is3Connected, "3-connected"}@
+			iff it cannot
 			be expressed as a 2-sum of smaller matroids.
 			
 		Example
@@ -1952,6 +1982,8 @@ doc ///
 	SeeAlso
 		seriesConnection
 		is3Connected
+		getSeparation
+		(isConnected, Matroid)
 ///
 
 doc ///
@@ -2022,11 +2054,12 @@ doc ///
 			This can lead to faster computations of rank.
 			
 		Example
-			A = random(QQ^4,QQ^6)
 			M = uniformMatroid(4, 6)
+			A = random(QQ^4,QQ^6)
 			setRepresentation(M, A)
 			getRepresentation M
 			keys M.cache
+			elapsedTime fVector M
 	SeeAlso
 		getRepresentation
 		matroid
@@ -2557,9 +2590,9 @@ doc ///
 			A = basisIndicatorMatrix U24
 		Text
 		
-			In order to obtain an actual polytope, one must take the convex
-			hull of the columns of the indicator matrix, which is provided by
-			the Polyhedra package:
+			In order to obtain an actual polytope object in M2, one
+			must take the convex hull of the columns of the indicator matrix,
+			which is provided by either the Polyhedra or OldPolyhedra package:
 			
 		Example
 			needsPackage "Polyhedra"
@@ -2567,7 +2600,7 @@ doc ///
 			vertices P
 		Text
 
-			The Gelfand-Goresky-MacPherson-Serganova 
+			The Gelfand-Goresky-MacPherson-Serganova (GGMS) theorem
 			characterizes which polytopes are basis polytopes for a matroid: 
 			namely, each edge is of the form $e_i - e_j$ for some $i, j$,
 			where $e_i$ are the standard basis vectors.
@@ -3328,5 +3361,7 @@ doc ///
 ///
 
 undocumented {
-	(net, Matroid)
+	(net, Matroid),
+	(independentSets, Matroid, Set),
+	(independentSets, Matroid, List)
 }
