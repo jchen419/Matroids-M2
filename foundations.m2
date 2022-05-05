@@ -194,33 +194,32 @@ myMinPres Matrix := Sequence => A -> (
 myMinPres Module := Sequence => M -> myMinPres presentation M
 
 liftTorsion = method()
-liftTorsion (Matrix, Module, List, List) := Matrix => (X, G, denoms, K) -> ( 
-    -- finds all lifts of a matrix X over QQ into a finite abelian group G
+liftTorsion (Matrix, Matrix, Module, List) := Matrix => (B, A, G, K) -> ( 
+    -- finds all solutions of AX = B over a finite abelian group G, given all solutions K to AX = 0
     -- assumes G is given by a minimal presentation (i.e. coker of diagonal matrix with nonzero diagonal entries)
-    -- numrows X should == numgens G, numcols X should == #denoms
-    if debugLevel > 0 then <<endl<<"liftTorsion: "<<(X,G,denoms,K)<<endl;
-    if not G.cache#?denoms then G.cache#denoms = new MutableList;
-    torsCands := for i to (numcols mingens G) - 1 list (
+    -- numrows B should == numgens G
+    torsCand := matrix for i to (numcols mingens G) - 1 list (
         n := (presentation G)_(i,i);
-        for j to (numcols X) - 1 list (
-            (a, b) := (numerator(X_(i,j)*denoms#j), denoms#j);
-            c := for k to n-1 do if (b*k - a) % n === 0 then break k;
-            if c === null then return false;
-            g := gcd(n, denoms#j);
-            if not G.cache#denoms#?j then G.cache#denoms#j = apply(g-1, k -> (k+1)*(n//g));
-            c
-        )
+        R := ZZ[]/n;
+        (q, r) := quotientRemainder'(sub(B^{i}, R), sub(A, R));
+        if r != 0 then return false;
+        {sub(q, ZZ)}
     );
+    apply(K, psi -> psi + torsCand)
 )
 
 abelianGroupHom = method()
 abelianGroupHom (Module, Module) := List => (G1, G2) -> (
     -- assumes G1, G2 are finite abelian groups
-    H := minPres Hom(G1, G2);
+    -- H := minPres Hom(G1, G2);
+    homSet := Hom(G1, G2);
+    (H, proj) := myMinPres homSet;
+    (H, proj) = (coker H, map(homSet, coker H, proj));
     if H == 0 then return {map(ZZ^(numgens G2), ZZ^(numgens G1), 0)};
     ords := apply(numgens H, i -> (presentation H)_(i,i));
     homElts := apply(toList(fold(apply(ords, a -> set(0..<a)), (a,b) -> a**b)), s -> transpose matrix {{deepSplice s}});
-    homElts/(f -> matrix homomorphism(H.cache.pruningMap * map(H, ZZ^1, f)))
+    -- homElts/(f -> matrix homomorphism(H.cache.pruningMap * map(H, ZZ^1, f)))
+    homElts/(f -> matrix homomorphism(proj * map(H, ZZ^1, f)))
 )
 
 TEST ///
@@ -514,7 +513,7 @@ foundation Matroid := Foundation => opts -> M -> (
         if trivialCrossRatios == 0 then trivialCrossRatios = map(ZZ^(#bases M+1),ZZ^0,0);
         if dbgLevelStore > 0 then << "foundation: " << numcols trivialCrossRatios << " relations found." << endl;
         B := sort toList first bases M;
-        D = sort toList (M.groundSet - B);
+        D := sort toList (M.groundSet - B);
         zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
         BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
         onePos := (edges kruskalSpanningForest BG)/toList/sort;
@@ -796,13 +795,13 @@ fullRankSublattice Pasture := List => P -> (
             (B*coeffs - c*e, coeffs, c)
         ))));
         otherPairs = otherPairs | delete(null, flatten apply(#S, i -> apply(#(S#i), j -> if any(type4Data#i#j, t -> abs last t != 1) then S#i#j#0)));
-        Q := minPres coker(L^freePart);
+        (Q, proj) := myMinPres coker(L^freePart);
         P.cache#"latticeGensMatrix" = L;
         P.cache#"generatingRules" = generatingRules;
         P.cache#"otherPairs" = otherPairs; -- pairs not contained in lattice L (i.e. abs(coeff) > 1)
         P.cache#"type4Data" = type4Data;
-        P.cache#"quotientLattice" = Q;
-        P.cache#"quotientPruningMap" = transpose matrix(Q.cache.pruningMap);
+        P.cache#"quotientLattice" = coker Q;
+        P.cache#"quotientPruningMap" = proj;
         P.cache#"latticeGensMatrixInverse" = inverse sub(L^freePart, QQ);
         P.cache#"latticeDenoms" = apply(entries transpose P.cache#"latticeGensMatrixInverse", col -> lcm(col/denominator));
         debugLevel = dbgLevelStore;
@@ -851,9 +850,8 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     Q := P1.cache#"quotientLattice";
     rho := P1.cache#"quotientPruningMap";
     K := apply(abelianGroupHom(Q, T2), f -> f * rho);
-    T0P2 := if T2 == 0 then map(ZZ^(numrows K#0), ZZ^(numcols K#0), 0) else null;
-    -- T0P2 := if T2 == 0 then K else null;
-    if debugLevel > 0 then print("morphisms: (#phi, #psi): " | net(#H, #K));
+    T0P2 := if T2 == 0 then K else null;
+    if debugLevel > 0 then print("morphisms: (#phi, psi): " | net(#H, K));
     if debugLevel > 0 then print("morphisms: Quotient lattice is: "| net Q);
     z0 := map(ZZ^n2, ZZ^0, 0);
     
@@ -861,7 +859,6 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     pastureMorphism(P1, P2, unique flatten for phi in H list (
         D := phi * A^torsPart1;
         torsType4 = apply(#type4Data, i -> apply(type4Data#i, t -> {phi*t#0#0^torsPart1, phi*t#1#0^torsPart1}));
-        -- if not all(torsType4#0, p -> any(fundPairsP2, pair -> set pair === set{p#0 % P2star, p#1 % P2star})) then continue;
         if not all(torsType4#0, p -> member(set{p#0 % P2star, p#1 % P2star}, fundPairsP2set)) then continue;
         delta := apply(r1, i -> phi * torsLatticeGens#i);
         C0 := z0;
@@ -909,16 +906,12 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
             ) else flatten while #(candidates#r1) > 0 list ( -- level == r1
                 C := C0 | candidates#r1#0;
                 candidates#r1 = drop(candidates#r1, 1);
-                E := (C - D) * B;
-                freeE := try sub(E^freePart2, ZZ);
+                freeE := try sub(C^freePart2 * B, ZZ);
                 if freeE === null then continue;
-                -- torsECands := if T0P2 =!= null then T0P2 else liftTorsion(E^torsPart2, T2, denoms, K);
-                -- for psi in torsECands list (
-                    -- M := phi | (psi || freeE);
-                torsE := if T0P2 =!= null then T0P2 else subTorsion(E^torsPart2, T2);
-                if torsE === false then continue;
-                for psi in K list (
-                    M := phi | ((torsE + psi) || freeE);
+                torsECands := if T0P2 =!= null then T0P2 else liftTorsion((C - D)^torsPart2, A^freePart1, T2, K);
+                if torsECands === false then continue;
+                for psi in torsECands list (
+                    M := phi | (psi || freeE);
                     if opts.FindIso and abs det M != 1 then continue;
                     if not all(otherPairs, p -> member(set{M*p#0 % P2star, M*p#1 % P2star}, fundPairsP2set)) then continue;
                     if opts.FindOne or opts.FindIso then return {pastureMorphism(P1, P2, M)} else M
@@ -1101,7 +1094,7 @@ representations (Matroid, GaloisField) := List => opts -> (M, k) -> (
 
 TEST ///
 N = matroid(toList(0..7), {{0,1,2,3},{0,1,4,5},{2,3,4,5},{0,2,4,6},{1,3,5,7},{1,2,6,7},{3,4,6,7},{0,5,6,7}}, EntryMode => "nonbases")
-assert(pairTypes foundation N === hashTable apply({(1,0),(2,1),(3,1),(4,2)}, p -> ("type " | toString p#0, p#1)))
+assert(pairTypes foundation N === hashTable apply({(1,1),(2,0),(3,1),(4,2)}, p -> ("type " | toString p#0, p#1)))
 ///
 
 TEST ///
@@ -1498,7 +1491,6 @@ set includedIndices
 -- compute limits/colimits of pastures
 -- determining if a pasture is a tensor product of specified pastures
 -- compute symmetry quotients?
--- Lift torsion correctly
 -- Natural map between different presentations of foundation
 
 restart
