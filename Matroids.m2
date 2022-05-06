@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.5.0",
-	Date => "May 4, 2022",
+	Version => "1.5.1",
+	Date => "May 6, 2022",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -1127,9 +1127,8 @@ allMatroids (ZZ, ZZ) := List => (n, r) -> (
 	numMatroids := {7, 13, 23, 38, 37, 108, 58, 325, 940, 87, 1275, 190214}; -- cf. Table 1 in https://arxiv.org/pdf/math/0702316.pdf
 	K := {(4,2),(5,2),(6,2),(6,3),(7,2),(7,3),(8,2),(8,3),(8,4),(9,2),(9,3),(9,4)};
 	H := hashTable apply(#K, i -> K#i => {2*i+1+sum take(numMatroids,i), 2*i+sum take(numMatroids,i+1)});
-	db := "SmallMatroids.txt";
-	if not fileExists db then db = "Matroids/" | db;
-	apply(take(lines get db, H#(n,r)), l -> matroid(E, PE_(positions(characters l, c -> c === "*"))))
+	db := get(first searchPath({"./Matroids/"} | path, "SmallMatroids.txt") | "SmallMatroids.txt");
+	apply(take(lines db, H#(n,r)), l -> matroid(E, PE_(positions(characters l, c -> c === "*"))))
 )
 allMatroids ZZ := List => n -> flatten apply(n+1, i -> allMatroids(n, i))
 
@@ -1171,9 +1170,9 @@ sizes = L -> L/(l -> #l)
 
 sliceBySize = (s, L) -> partition(l -> #(l*s), L) -- intersects a set against a list of sets, and records sizes
 
-load "./doc-Matroids.m2"
+load "./Matroids/doc-Matroids.m2"
 
-load "./tests-Matroids.m2"
+load "./Matroids/tests-Matroids.m2"
 
 end--
 restart
@@ -1186,4 +1185,3 @@ check "Matroids"
 
 -- TODO:
 -- Update documentation
--- Potential improvements to flats, latticeOfFlats: record (all?) containment info
