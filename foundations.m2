@@ -140,7 +140,6 @@ fundEltPartners (List, Thing) := List => (L, A) -> (
 )
 fundEltPartners (Pasture, Thing) := List => (P, e) -> (
     if not P.cache#?"partnerTable" then P.cache#"partnerTable" = (
-    -- H := if P.cache#?"partnerTable" then P.cache#"partnerTable" else P.cache#"partnerTable" = (
         FP := unique flatten P.hexagons;
         FE := unique flatten FP;
         hashTable apply(FE, e -> e => fundEltPartners(FP, e))
@@ -194,7 +193,7 @@ myMinPres Matrix := Sequence => A -> (
 myMinPres Module := Sequence => M -> myMinPres presentation M
 
 liftTorsion = method()
-liftTorsion (Matrix, Matrix, Module, List) := Matrix => (B, A, G, K) -> ( 
+liftTorsion (Matrix, Matrix, Module, List) := Matrix => (A, B, G, K) -> ( 
     -- finds all solutions of AX = B over a finite abelian group G, given all solutions K to AX = 0
     -- assumes G is given by a minimal presentation (i.e. coker of diagonal matrix with nonzero diagonal entries)
     -- numrows B should == numgens G
@@ -229,6 +228,10 @@ G3 = coker diagonalMatrix{5}
 assert(#abelianGroupHom(G1,G1) == 48)
 assert(#abelianGroupHom(G1,G2 ++ G3) == 4)
 assert(#abelianGroupHom(G1,G3) == 1)
+
+G1 = cokernel matrix {{306, 162}, {432, 216}}
+G2 = cokernel matrix {{24, 72}, {12, 140}}
+assert(#abelianGroupHom(G1, G2) == 1152)
 ///
 
 ------------------------------------------
@@ -320,10 +323,11 @@ coproduct (Pasture, Pasture) := Pasture => (P1, P2) -> (
 )
 Pasture ** Pasture := (P1, P2) -> coproduct(P1, P2)
 
-TEST ///
+TEST /// -- Coproduct of pastures
+assert areIsomorphic((pasture GF 2) ** (pasture GF 3), specificPasture "krasner")
 U24 = uniformMatroid(2, 4)
 U = foundation U24
-areIsomorphic(U ** U, foundation(U24 ++ U24))
+assert areIsomorphic(U ** U, foundation(U24 ++ U24))
 ///
 
 ------------------------------------------
@@ -411,25 +415,26 @@ assert(#edges spanningForest G == #vertices G - 2)
 foundation = method(Options => {Strategy => null, HasF7Minor => null, HasF7dualMinor => null})
 foundation Matroid := Foundation => opts -> M -> (
     if M.cache#?"foundation" and (opts.Strategy === null or M.cache#"foundation".cache#"strategy" === opts.Strategy) then M.cache#"foundation" else M.cache#"foundation" = (
-    dbgLevelStore = debugLevel;
+    dbg = debugLevel;
     debugLevel = 0;
     r := rank M;
     cacheList := {};
     strat := toLower toString if opts.Strategy === null then "bases" else opts.Strategy;
-    if dbgLevelStore > 0 then << "foundation: Using strategy " << strat << endl;
+    if dbg > 0 then << "foundation: Using strategy " << strat << endl;
     if strat === "hyperplanes" then (
         hypMap := hashTable apply(#hyperplanes M, i -> (hyperplanes M)#i => i);
-        if dbgLevelStore > 5 then print("foundation: hypMap: " | net hypMap);
+        if dbg > 5 then print("foundation: hypMap: " | net hypMap);
         indexOfHyp := h -> hypMap#h;
-        corank2flats := select(flats(M, 2), F -> rank_M F == r - 2);
-        corank3flats := select(flats(M, 3), F -> rank_M F == r - 3);
-        if dbgLevelStore > 0 then << "foundation: Finding upper U(2,4) minors..." << flush;
+        corank2flats := select(flats(M, 2, "corank"), F -> rank_M F == r - 2);
+        corank3flats := select(flats(M, 3, "corank"), F -> rank_M F == r - 3);
+        if dbg > 0 then << "foundation: Finding upper U(2,4) minors..." << flush;
         U24minors := flatten apply(corank2flats, F -> subsets(select(hyperplanes M, H -> isSubset(F, H)), 4));
-        if dbgLevelStore > 0 then << #U24minors << " found." << endl;
-        if dbgLevelStore > 0 then << "foundation: Finding upper U(2,5) minors..." << flush;
+        if dbg > 0 then << #U24minors << " found." << endl;
+        if dbg > 0 then << "foundation: Finding upper U(2,5) minors..." << flush;
         U25minors := flatten apply(corank2flats, F -> subsets(select(hyperplanes M, H -> isSubset(F, H)), 5));
-        if dbgLevelStore > 0 then << #U25minors << " found." << endl;
-        if dbgLevelStore > 0 then print "foundation: Finding rank 3 minors (C5, U(3,5), Fano)...";
+        if dbg > 0 then << #U25minors << " found." << endl;
+        if dbg > 0 then print "foundation: Finding rank 3 minors (C5, U(3,5), Fano)...";
+        rk3minors := 0;
         F7 := specificMatroid "fano";
         (F7Known, F7dualKnown) := (opts.HasF7Minor =!= null, opts.HasF7dualMinor =!= null);
         (hasF7, hasF7dual) := (if F7Known then opts.HasF7Minor else false, if F7dualKnown then opts.HasF7dualMinor else false);
@@ -437,18 +442,22 @@ foundation Matroid := Foundation => opts -> M -> (
             cork2F := select(corank2flats, F2 -> isSubset(F, F2));
             if #cork2F < 5 then continue;
             hypsF := select(hyperplanes M, H -> isSubset(F, H));
-            if not F7Known and not hasF7 and min(#hypsF, #cork2F) >= 7 then hasF7 = hasMinor(M/F, F7);
+            if not F7Known and not hasF7 and min(#hypsF, #cork2F) >= 7 then (
+                rk3minors = rk3minors + 1;
+                hasF7 = hasMinor(M/F, F7);
+            );
             if #hypsF < 8 then continue;
             for S in subsets(cork2F, 5) list (
                 T := unique apply(subsets(S, 2)/toSequence, chooseHyp_hypsF);
-                if member(#T, {8,10}) then (S, T) else continue
+                if member(#T, {8,10}) then ( rk3minors = rk3minors + 1; (S, T) ) else continue
             )
         );
+        if dbg > 0 then << #rk3minors << " found." << endl;
         if not F7dualKnown and not hasF7 then (
-            if dbgLevelStore > 0 then print "foundation: Detecting dual Fano minor...";
+            if dbg > 0 then print "foundation: Detecting dual Fano minor...";
             hasF7dual = hasMinor(M, dual F7);
         );
-        if dbgLevelStore > 0 then print "foundation: All minors found. Finding relations...";
+        if dbg > 0 then print "foundation: All minors found. Finding relations...";
         H4aminors := select(H4hyps, p -> #last p == 8);
         H4bminors := select(H4hyps, p -> #last p == 10);
         u := #U24minors;
@@ -458,7 +467,7 @@ foundation Matroid := Foundation => opts -> M -> (
         twistedRatios := apply(U24minors, S -> {S#0, S#3, S#2, S#1});
         genRatios := U24minors | twistedRatios;
         genTable := hashTable apply(#U24minors, i -> set genRatios#i => i);
-        if dbgLevelStore > 5 then print("foundation: genTable: " | net genTable);
+        if dbg > 5 then print("foundation: genTable: " | net genTable);
         hashMap := (D,i) -> matrix G_{1 + genTable#(set D) + (if i == 0 then 0 else u)};
         H3rels := flatten apply(U25minors/(m -> sort(m, indexOfHyp)), m ->
             {hashMap(h3_5 m,0) + hashMap(h3_3 m,0) - hashMap(h3_4 m,0),
@@ -466,7 +475,7 @@ foundation Matroid := Foundation => opts -> M -> (
             hashMap(h3_1 m,0) + hashMap(h3_3 m,0) - hashMap(h3_2 m,0),
             hashMap(h3_2 m,1) + hashMap(h3_4 m,1) - hashMap(h3_3 m,1),
             hashMap(h3_4 m,1) + hashMap(h3_1 m,0) - hashMap(h3_5 m,1)});
-        if dbgLevelStore > 0 then print "foundation: Finding H4a relations...";
+        if dbg > 0 then print "foundation: Finding H4a relations...";
         H4arels := if #H4aminors == 0 then map(ZZ^(2*u+1),ZZ^0,0) else fold(apply(H4aminors, m -> (
             h := (last m)#(position(last m, x -> #select(first m, f -> isSubset(f,x)) == 3));
             (f4,f5) := toSequence select(first m, f -> not isSubset (f,h));
@@ -475,20 +484,20 @@ foundation Matroid := Foundation => opts -> M -> (
             d2 := {chooseHyp(last m,f5, f1),chooseHyp(last m,f5, f2),chooseHyp(last m, f5, f3), chooseHyp(last m, f4, f5)};
             fold({eps,hashMap(d1,0),hashMap(d1,1),hashMap(d2,0),hashMap(d2,1)},(a,b) -> a|b)*H4acoeffs(getPerm(d1, indexOfHyp), getPerm(d2, indexOfHyp))
             )), (a,b) -> a|b);
-        if dbgLevelStore > 5 then print("foundation: H4arels: " | toString H4arels);
-        if dbgLevelStore > 0 then print "foundation: Finding H4b relations...";
+        if dbg > 5 then print("foundation: H4arels: " | toString H4arels);
+        if dbg > 0 then print "foundation: Finding H4b relations...";
         H4brels := if #H4bminors == 0 then map(ZZ^(2*u+1),ZZ^0,0) else fold(flatten apply(H4bminors, p -> (
             T := containmentTable p;
             Hats := apply(5, i -> (apply(4, j -> T#(set{p#0#i,p#0#((i+1+j) %5)})), apply({0,3,2,1}, j-> T#(set{p#0#i,p#0#((i+1+j) %5)}))));
             coeffs := apply(5, i -> H4bcoeffs(getPerm(Hats#i#1, indexOfHyp), getPerm(Hats#((i-1)%5)#0, indexOfHyp), getPerm(Hats#((i+1)%5)#0, indexOfHyp)));
-            if dbgLevelStore > 5 then print("foundation: coeffs: " | net coeffs | ", hats:" | net Hats);
+            if dbg > 5 then print("foundation: coeffs: " | net coeffs | ", hats:" | net Hats);
             apply(5, i -> (
                 cols := {eps,hashMap(Hats#i#1,0), hashMap(Hats#i#1,1), hashMap(Hats#(i-1)#0,0), hashMap(Hats#(i-1)#1,1), hashMap(Hats#((i+1)%5)#0,0), hashMap(Hats#((i+1)%5)#1,1)};
                 sum(#cols, j -> coeffs#i#j*cols#j)
             )))), (a,b) -> a|b); 
         H := matrix {{Hminus} | H3rels} | H4arels | H4brels;
-        if dbgLevelStore > 2 then print("foundation: Presentation matrix H: " | toString H);
-        if dbgLevelStore > 0 then print("foundation: All relations found. Computing Smith normal form for " | toString numrows H | " x " | toString numcols H | " matrix...");
+        if dbg > 2 then print("foundation: Presentation matrix H: " | toString H);
+        if dbg > 0 then print("foundation: All relations found. Computing Smith normal form for " | toString numrows H | " x " | toString numcols H | " matrix...");
         (g, ch) := myMinPres H;
         eps = ch_{0} % g;
         hexes := hexesFromPairs(g, eps, apply(u, i -> {ch_{i+1}, ch_{i+u+1}}));
@@ -498,9 +507,9 @@ foundation Matroid := Foundation => opts -> M -> (
         eps = matrix G_{0};
         signPerm := s -> if det ((id_(ZZ^(#M_*)))_s)^(sort s) == 1 then 0 else 1;
         basesMap := hashTable apply(#bases M, i -> (bases M)#i => i+1);
-        if dbgLevelStore > 0 then << "foundation: #bases: " << #basesMap << ". Finding trivial cross ratios..." << endl;
+        if dbg > 0 then << "foundation: #bases: " << #basesMap << ". Finding trivial cross ratios..." << endl;
         maxRankNonbases := select(nonbases M, N -> rank_M N == rank M - 1)/toList;
-        if dbgLevelStore > 0 then << "foundation: #trivial cross ratios: " << #maxRankNonbases << ". Computing relations..." << endl;
+        if dbg > 0 then << "foundation: #trivial cross ratios: " << #maxRankNonbases << ". Computing relations..." << endl;
         trivialCrossRatios := matrix{flatten for N in maxRankNonbases list (
             C := toList fundamentalCircuit(M, set N, N#0);
             D := toList fundamentalCircuit(dual M, M.groundSet - N, last toList(M.groundSet - N));
@@ -511,19 +520,19 @@ foundation Matroid := Foundation => opts -> M -> (
             ))
         )};
         if trivialCrossRatios == 0 then trivialCrossRatios = map(ZZ^(#bases M+1),ZZ^0,0);
-        if dbgLevelStore > 0 then << "foundation: " << numcols trivialCrossRatios << " relations found." << endl;
+        if dbg > 0 then << "foundation: " << numcols trivialCrossRatios << " relations found." << endl;
         B := sort toList first bases M;
         D := sort toList (M.groundSet - B);
         zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
         BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
         onePos := (edges kruskalSpanningForest BG)/toList/sort;
-        if dbgLevelStore > 0 then << "foundation: Spanning forest: " << onePos << endl;
+        if dbg > 0 then << "foundation: Spanning forest: " << onePos << endl;
         imDegMap := matrix({G_1} | apply(onePos, p -> G_(basesMap#(set B + set p - (set B*set p))))); -- corank of image of degree map = #connectedComponents BG - 1
         (g, ch) = myMinPres (2*eps | trivialCrossRatios | imDegMap);
         eps = ch_{0} % g;
-        if dbgLevelStore > 0 then << "foundation: Finding upper U24 minors..." << flush;
+        if dbg > 0 then << "foundation: Finding upper U24 minors..." << flush;
         IS := independentSets(M, r - 2);
-        corank2Table := hashTable delete(null, apply(flats(M, 2) - set hyperplanes M, F -> (
+        corank2Table := hashTable delete(null, apply(flats(M, 2, "corank") - set hyperplanes M, F -> (
             p := position(IS, I -> isSubset(I, F));
             if p =!= null then (F, IS#p)
         )));
@@ -531,7 +540,7 @@ foundation Matroid := Foundation => opts -> M -> (
             apply(subsets(apply(select(hyperplanes M, H -> isSubset(F, H)), H -> first toList(H - F)), 4), s -> {corank2Table#F, sort s})
         ));
         u = #U24minors;
-        if dbgLevelStore > 0 then << u << " found. " << endl << "foundation: Generating hexagons..." << endl;
+        if dbg > 0 then << u << " found. " << endl << "foundation: Generating hexagons..." << endl;
         hexes = hexesFromPairs(g, eps, apply(U24minors, p -> (
             l := {set{p#1#0, p#1#1}, set{p#1#2, p#1#3}, set{p#1#0, p#1#2}, set{p#1#1, p#1#3}, set{p#1#0, p#1#3}, set{p#1#1, p#1#2}};
             l = apply(l, q -> ch_(basesMap#(p#0 + q)));
@@ -539,7 +548,7 @@ foundation Matroid := Foundation => opts -> M -> (
         )));
         cacheList = {("pruningMapB", ch), ("genTableB", basesMap), ("imDegMap", imDegMap), ("spanningForest", onePos)};
     );
-    debugLevel = dbgLevelStore;
+    debugLevel = dbg;
     new Foundation from {
         symbol multiplicativeGroup => coker g,
         symbol epsilon => eps,
@@ -554,10 +563,10 @@ saveFoundation (Matroid, String) := String => (M, fileName) -> (
     F := foundation M;
     outputFile := openOut fileName;
     outputFile << "new Foundation from {" << endl;
-    for k in delete(cache, keys F) do outputFile << toString k << " => " << toString(F#k) << ", " << endl;
+    for k in delete(cache, keys F) do outputFile << toString k << " => " << toExternalString(F#k) << ", " << endl;
     outputFile << "cache => new CacheTable from {" << endl;
     k0 := if F.cache#?"genTableB" then "genTableB" else "genTableH";
-    for k in keys F.cache - set{k0} do outputFile << "\"" << k << "\" => " << toString F.cache#k << ", " << endl;
+    for k in keys F.cache - set{k0} do outputFile << "\"" << k << "\" => " << toExternalString F.cache#k << ", " << endl;
     outputFile << "\"" << k0 << "\" => " << toString F.cache#k0 << endl;
     outputFile << "}" << endl << "}" << close;
     fileName
@@ -726,14 +735,14 @@ morphisms1 (Pasture, Pasture) := List => opts -> (P, P') -> (
 fullRankSublattice = method()
 fullRankSublattice Pasture := List => P -> (
     if P.cache#?"sublattice" then P.cache#"sublattice" else P.cache#"sublattice" = (
-        dbgLevelStore := debugLevel;
+        dbg := debugLevel;
         debugLevel = 0;
         n := numrows presentation P.multiplicativeGroup;
         freePart := freePartPasture P;
         torsPart := toList(0..<n) - set freePart;
         S := {}; -- list of lists of type 4 hexagons
         s := rank (matrix{flatten(P.hexagons/first)})^freePart;
-        if dbgLevelStore > 0 then << "fullRankSublattice: Finding rank " << s << " sublattice..." << endl;
+        if dbg > 0 then << "fullRankSublattice: Finding rank " << s << " sublattice..." << endl;
         currentPairs := {};
         r := 0;
         T := new MutableList from {0, 0, 0};
@@ -759,10 +768,10 @@ fullRankSublattice Pasture := List => P -> (
             else if #type3Pairs > 0 then ( S = append(S, {}); T#2 = T#2 + 1; type3Pairs#0 )
             else break;
             currentPairs = append(currentPairs, newPair);
-            if dbgLevelStore > 0 then << "\rfullRankSublattice: Types of pairs found: " << toList T << flush;
+            if dbg > 0 then << "\rfullRankSublattice: Types of pairs found: " << toList T << flush;
         );
         S = append(S, P.hexagons - set(currentPairs/last) - set flatten S);
-        if dbgLevelStore > 0 then << endl << "fullRankSublattice: Sublattice found. Creating generating rules..." << endl;
+        if dbg > 0 then << endl << "fullRankSublattice: Sublattice found. Creating generating rules..." << endl;
         G := currentPairs/first;
         g := #freePart;
         L := if g == 0 then map(ZZ^n, ZZ^0, 0) else matrix{flatten for i to #G-1 list if G#i#0#2 == 1 + G#i#0#1 then G#i#1 else G#i#1#1};
@@ -803,8 +812,7 @@ fullRankSublattice Pasture := List => P -> (
         P.cache#"quotientLattice" = coker Q;
         P.cache#"quotientPruningMap" = proj;
         P.cache#"latticeGensMatrixInverse" = inverse sub(L^freePart, QQ);
-        P.cache#"latticeDenoms" = apply(entries transpose P.cache#"latticeGensMatrixInverse", col -> lcm(col/denominator));
-        debugLevel = dbgLevelStore;
+        debugLevel = dbg;
         G
     )
 )
@@ -838,7 +846,6 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     otherPairs := P1.cache#"otherPairs";
     type4Data := P1.cache#"type4Data";
     B := P1.cache#"latticeGensMatrixInverse";
-    denoms := P1.cache#"latticeDenoms";
     
     -- Prepare torsion maps
     T1 := coker(P1star^torsPart1);
@@ -903,12 +910,12 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                 candidates#level = newCandidates;
                 if debugLevel > 0 then << "\rmorphisms: Search tree: " << toString apply(#candidates, i -> #candidates#i) << flush;
                 continue;
-            ) else flatten while #(candidates#r1) > 0 list ( -- level == r1
+            ) else flatten while #(candidates#r1) > 0 list ( -- level == r1 (bottom of search tree)
                 C := C0 | candidates#r1#0;
                 candidates#r1 = drop(candidates#r1, 1);
                 freeE := try sub(C^freePart2 * B, ZZ);
                 if freeE === null then continue;
-                torsECands := if T0P2 =!= null then T0P2 else liftTorsion((C - D)^torsPart2, A^freePart1, T2, K);
+                torsECands := if T0P2 =!= null then T0P2 else liftTorsion(A^freePart1, (C - D)^torsPart2, T2, K);
                 if torsECands === false then continue;
                 for psi in torsECands list (
                     M := phi | (psi || freeE);
@@ -1092,6 +1099,37 @@ representations (Matroid, GaloisField) := List => opts -> (M, k) -> (
     )))
 )
 
+searchRepresentation = method(Options => {symbol Attempts => 10000})
+searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
+    (r, n) := (rank M, #M.groundSet);
+    B := sort toList first bases M;
+    D := sort toList (M.groundSet - B);
+    zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
+    BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
+    onePos := (edges kruskalSpanningForest BG)/toList/sort;
+    O := apply(onePos, p -> (position(toList(0..<r), i -> B#i === p#0), p#1));
+    O = O | apply(r, i -> (i, B#i));
+    Z := flatten apply(#D, j -> apply(zeroPos#j, i -> (i, D#j)));
+    knownPos := O | Z | flatten apply(r, i -> apply(delete(i, toList(0..<r)), j -> (i, B#j)));
+    unknowns := toList((0,0)..(r-1,n-1)) - set knownPos;
+    if debugLevel > 0 then << "searchRepresentation: #unknowns = " << #unknowns << endl;
+    A := new MutableMatrix from map(k^r, k^n, 0);
+    scan(O, p -> A_p = 1);
+    (viable, total) := (0, 0);
+    foundRep := while total < opts.Attempts do (
+        total = total + 1;
+        if debugLevel > 0 then << "\rTesting candidate " << viable<<"/"<<total << " ... " << flush;
+        scan(unknowns, u -> A_u = ( a := random k; while a == 0 do a = random k; a ) );
+        N := matroid matrix A;
+        if #bases N === #bases M then (
+            viable = viable + 1;
+            if areIsomorphic(M, N) then break true;
+        );
+    );
+    if foundRep === null then print " Could not find representation - please try again";
+    matrix A
+)
+
 TEST ///
 N = matroid(toList(0..7), {{0,1,2,3},{0,1,4,5},{2,3,4,5},{0,2,4,6},{1,3,5,7},{1,2,6,7},{3,4,6,7},{0,5,6,7}}, EntryMode => "nonbases")
 assert(pairTypes foundation N === hashTable apply({(1,1),(2,0),(3,1),(4,2)}, p -> ("type " | toString p#0, p#1)))
@@ -1109,6 +1147,13 @@ N2 = matroid(toList(0..8), {{0,1,2,3},{0,1,2,4},{0,1,3,4},{0,2,3,4},{1,2,3,4},{0
 assert(pairTypes foundation N2 === hashTable apply({(1,1),(2,0),(3,1),(4,1)}, p -> ("type " | toString p#0, p#1)))
 assert Equation(2, #morphisms(foundation N2, pasture GF 4))
 assert all(representations(N2, GF 4), A -> N2 == matroid A)
+///
+
+TEST ///
+B = specificMatroid betsyRoss
+k = GF 4
+setRandomSeed 5
+elapsedTime searchRepresentation(B, k)
 ///
 
 ------------------------------------------
@@ -1492,6 +1537,7 @@ set includedIndices
 -- determining if a pasture is a tensor product of specified pastures
 -- compute symmetry quotients?
 -- Natural map between different presentations of foundation
+-- Finish single element extensions via linear subclasses
 
 restart
 load "foundations.m2"
