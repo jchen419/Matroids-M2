@@ -41,7 +41,6 @@ export {
 	"coloops",
 	"isDependent",
 	"closure",
-	"hyperplanes",
 	"flats",
 	"latticeOfFlats",
 	"restriction",
@@ -312,16 +311,19 @@ closure (Matroid, Set) := Set => (M, S) -> (
 	S + set select(toList(M.groundSet - S), s -> r == rank(M, S + set{s}))
 )
 
-hyperplanes = method()
+-- the 'hyperplanes' methods is defined in 'Polyhedra'
 hyperplanes Matroid := List => M -> (
 	if M.cache.?hyperplanes then M.cache.hyperplanes else M.cache.hyperplanes = (circuits dual M)/(c -> M.groundSet - c)
 )
 
 flats = method()
-flats (Matroid, ZZ) := List => (M, r) -> ( -- computes all intersections of r hyperplanes (which contains all flats of rank = rank M - r)
-	if not M.cache#?"flatsOfCorank" then M.cache#"flatsOfCorank" = new MutableHashTable from {0 => {M.groundSet}, 1 => hyperplanes M};
-	if M.cache#"flatsOfCorank"#?r then M.cache#"flatsOfCorank"#r else M.cache#"flatsOfCorank"#r = unique flatten apply(flats(M, r-1), f -> apply(hyperplanes M, h -> h*f))
+flats (Matroid, ZZ, String) := List => (M, r, mode) -> ( -- computes all intersections of r hyperplanes (which contains all flats of rank = rank M - r)
+	if mode === "corank" then (
+		if not M.cache#?"flatsOfCorank" then M.cache#"flatsOfCorank" = new MutableHashTable from {0 => {M.groundSet}, 1 => hyperplanes M};
+		if M.cache#"flatsOfCorank"#?r then M.cache#"flatsOfCorank"#r else M.cache#"flatsOfCorank"#r = unique flatten apply(flats(M, r-1, "corank"), f -> apply(hyperplanes M, h -> h*f))
+	) else select(flats M, f -> rank_M f === r)
 )
+flats (Matroid, ZZ) := List => (M, r) -> flats(M, r, "rank")
 flats Matroid := List => M -> (
 	if M.cache.?flats then M.cache.flats else M.cache.flats = (
 		if debugLevel > 0 then printerr("flats: Finding hyperplanes...");
@@ -374,7 +376,7 @@ latticeOfFlats Matroid := Poset => M -> (
 	poset(flats M/toList/sort, M.cache#"flatsRelations", M.cache#"flatsRelationsMatrix", AntisymmetryStrategy => "none")
 )
 
-fVector Matroid := HashTable => opts -> M -> hashTable pairs tally(flats M/rank_M)
+fVector Matroid := HashTable => M -> hashTable pairs tally(flats M/rank_M)
 
 dual Matroid := Matroid => {} >> opts -> M -> (
 	if M.cache.?dual then M.cache.dual else M.cache.dual = (
@@ -444,7 +446,7 @@ hasMinor (Matroid, Matroid) := Boolean => opts -> (M, N) -> (
 	if n > m or rank N > rank M or #bases N > #bases M then return false;
 	if opts.Strategy === "flats" and isSimple N then (
 		v := fVector N;
-		truncatedLattice := select(flats(M, rank N), f -> rank_M f >= rank M - rank N);
+		truncatedLattice := select(flats(M, rank N, "corank"), f -> rank_M f >= rank M - rank N);
 		possibleFlats := select(truncatedLattice, f -> rank_M f == rank M - rank N);
 		truncatedLattice = truncatedLattice - set possibleFlats;
 		for f in possibleFlats do (
@@ -743,6 +745,7 @@ getIsos (Matroid, Matroid) := List => (M, N) -> (
 )
 
 isomorphism (Matroid, Matroid) := HashTable => (M, N) -> ( -- assumes (M, N) satisfy "Could be isomorphic" by quickIsomorphismTest
+	if M == N then return hashTable apply(#M_*, i -> (i, i));
 	local coloopStore, local C, local D, local e, local C1, local c0slice;
 	local coverCircuits, local H, local candidates, local extraElts, local F, local E;
 	coloopStore = (M, N)/coloops/sort; -- sort is crucial!
@@ -1124,11 +1127,14 @@ allMatroids (ZZ, ZZ) := List => (n, r) -> (
 	if r == 1 then return {uniformMatroid(1, n)} | apply(n-1, i -> matroid(E, take(subsets(n, 1), i+1), EntryMode => "nonbases"));
 	if n > 9 then error "allMatroids: Can only return all matroids on <= 9 elements";
 	PE := reverse sort subsets(set E, r);
-	numMatroids := {7, 13, 23, 38, 37, 108, 58, 325, 940, 87, 1275, 190214}; -- cf. Table 1 in https://arxiv.org/pdf/math/0702316.pdf
-	K := {(4,2),(5,2),(6,2),(6,3),(7,2),(7,3),(8,2),(8,3),(8,4),(9,2),(9,3),(9,4)};
-	H := hashTable apply(#K, i -> K#i => {2*i+1+sum take(numMatroids,i), 2*i+sum take(numMatroids,i+1)});
-	db := get(first searchPath({"./Matroids/"} | path, "SmallMatroids.txt") | "SmallMatroids.txt");
-	apply(take(lines db, H#(n,r)), l -> matroid(E, PE_(positions(characters l, c -> c === "*"))))
+	dir := first select(path, p -> fileExists(p | "Matroids/SmallMatroids.txt"));
+	db := if (n, r) =!= (9, 4) then (
+		numMatroids := {7,13,23,38,37,108,58,325,940,87,1275}; -- cf. Table 1 in https://arxiv.org/pdf/math/0702316.pdf
+		K := {(4,2),(5,2),(6,2),(6,3),(7,2),(7,3),(8,2),(8,3),(8,4),(9,2),(9,3)};
+		H := hashTable apply(#K, i -> K#i => {2*i+1+sum take(numMatroids,i), 2*i+sum take(numMatroids,i+1)});
+		take(lines get(dir | "Matroids/SmallMatroids.txt"), H#(n,r))
+	) else lines get(dir | "Matroids/r4n9.txt");
+	apply(db, l -> matroid(E, PE_(positions(characters l, c -> c === "*"))))
 )
 allMatroids ZZ := List => n -> flatten apply(n+1, i -> allMatroids(n, i))
 

@@ -101,11 +101,19 @@ specificPasture String := Pasture => name -> (
     id0 := id_(ZZ^0);
     id1 := id_(ZZ^1);
     z01 := map(ZZ^0, ZZ^1, 0);
-    if name == "F1pm" then pasture(2*id1, id1, {})
-    else if name == "F2" then pasture(id0, z01, {})
-    else if name == "krasner" then pasture(id0, z01, {{z01, z01}})
-    else if name == "sign" then pasture(2*id1, id1, {{0*id1, 0*id1}})
-    else error "specificPasture: Expected name to be one of: F1pm, F2, krasner, sign"
+    n0 := toUpper first characters name;
+    if name === "F1pm" then pasture(2*id1, id1, {})
+    else if name === "F2" then pasture(id0, z01, {})
+    else if name === "F3" then pasture(2*id1, id1, {{id1, id1}})
+    else if n0 === "D" then pasture([x], "x-1")
+    else if n0 === "G" then pasture([x], "x+x^2")
+    else if n0 === "H" then pasture([x], "-x^3, x+x^(-1)")
+    else if n0 === "I" then pasture([z,t], "z + z^2, -z^2 + t, z^4 + z*t")
+    else if n0 === "K" then pasture(id0, z01, {{z01, z01}})
+    else if n0 === "S" then pasture(2*id1, id1, {{0*id1, 0*id1}})
+    else if n0 === "U" then pasture([x,y], "x+y")
+    else if n0 === "V" then pasture([x,y,z,s,t], "x*y*s*t+y*z*s,s*t+z*s,t+y^(-1),s^(-1)+x,y*z+x*y")
+    else error "specificPasture: Expected name to be one of: D, F1pm, F2, F3, G, H, I, K, S, U, V"
 )
 specificPasture Symbol := Pasture => s -> specificPasture toString s
 
@@ -114,6 +122,13 @@ assert areIsomorphic(pasture([], ""), specificPasture "F1pm")
 assert areIsomorphic(pasture([], "-1,-1-1"), specificPasture "krasner")
 assert areIsomorphic(pasture([], "-1"), pasture GF 2)
 assert areIsomorphic(pasture([], "0+0"), specificPasture "sign")
+assert areIsomorphic(foundation specificMatroid nonfano, specificPasture D)
+assert areIsomorphic(foundation specificMatroid fano, specificPasture F2)
+assert areIsomorphic(foundation specificMatroid T8, specificPasture F3)
+assert areIsomorphic(foundation specificMatroid betsyRoss, specificPasture G)
+assert areIsomorphic(foundation affineGeometry(2,3), specificPasture H)
+assert areIsomorphic(foundation uniformMatroid_2 4, specificPasture U)
+assert areIsomorphic(foundation uniformMatroid_2 5, specificPasture V)
 V5 = pasture(matrix{{4},{0}}, matrix{{2},{0}}, {{matrix{{1},{0}}, matrix{{0},{1}}}, {matrix{{3},{0}}, matrix{{1},{1}}},{matrix{{2},{0}}, matrix{{1},{2}}}})
 assert areIsomorphic(V5, pasture([x,i], "-i^2,x-i,-1-i*x^2"))
 ///
@@ -433,7 +448,7 @@ foundation Matroid := Foundation => opts -> M -> (
         if dbg > 0 then << "foundation: Finding upper U(2,5) minors..." << flush;
         U25minors := flatten apply(corank2flats, F -> subsets(select(hyperplanes M, H -> isSubset(F, H)), 5));
         if dbg > 0 then << #U25minors << " found." << endl;
-        if dbg > 0 then print "foundation: Finding rank 3 minors (C5, U(3,5), Fano)...";
+        if dbg > 0 then << "foundation: Finding rank 3 minors (C5, U(3,5), Fano)..." << flush;
         rk3minors := 0;
         F7 := specificMatroid "fano";
         (F7Known, F7dualKnown) := (opts.HasF7Minor =!= null, opts.HasF7dualMinor =!= null);
@@ -452,7 +467,7 @@ foundation Matroid := Foundation => opts -> M -> (
                 if member(#T, {8,10}) then ( rk3minors = rk3minors + 1; (S, T) ) else continue
             )
         );
-        if dbg > 0 then << #rk3minors << " found." << endl;
+        if dbg > 0 then << rk3minors << " found." << endl;
         if not F7dualKnown and not hasF7 then (
             if dbg > 0 then print "foundation: Detecting dual Fano minor...";
             hasF7dual = hasMinor(M, dual F7);
@@ -932,11 +947,17 @@ areIsomorphic (Pasture, Pasture) := Boolean => (P, P') -> #morphisms(P, P', Find
 
 isoTypes = method()
 isoTypes List := List => L -> (
+    dbg := debugLevel;
+    debugLevel = 0;
     isoClasses := {};
     for P in L do (
         isNewIsoClass := for c in isoClasses do if areIsomorphic(c, P) then break false;
-        if isNewIsoClass =!= false then isoClasses = append(isoClasses, P);
+        if isNewIsoClass =!= false then (
+            isoClasses = append(isoClasses, P);
+            if dbg > 0 then << "isoTypes: found new iso class, total is " << #isoClasses << endl;
+        );
     );
+    debugLevel = dbg;
     isoClasses
 )
 
@@ -1012,7 +1033,11 @@ P = pasture GF 4 * pasture GF 5
 G = pasture([t], "t + t^2")
 assert Equation(0, #morphisms(P, G))
 assert Equation(2, #morphisms(G, P))
--- Note: it is known that any matroid which is representable over GF(4) and GF(5) is also representable over G
+-- It is known that any matroid which is representable over GF(4) and GF(5) is also representable over G, so the above shows that GF(4) * GF(5) is not a foundation
+P = pasture GF 3 * specificPasture S
+assert Equation(1, #morphisms(P, pasture GF 3))
+assert (hexTypes P === hashTable {("D",1),("H",0),("F3",0),("U",0)} and not areIsomorphic(P, specificPasture D))
+-- It is known that the foundation of any ternary matroid is a tensor product of copies of F2, F3, D, H, U, so the above shows that GF(3) * S is not a foundation
 ///
 
 TEST /// -- Isomorphism check
@@ -1047,13 +1072,10 @@ assert Equation(2, #morphisms(foundation M, pasture k))
 ///
 
 TEST /// -- all matroids on <= 8 elements with a type 2 pair in foundation
-M = matroid(toList(0..<8), {{0,1,2},{4,0,3},{5,1,3},{6,2,3},{4,5,6},{4,1,7},{5,2,7}}, EntryMode => "nonbases")
-assert Equation(1, (pairTypes foundation M)#"type 2")
 r4n8 = allMatroids(8, 4);
-type2 = apply({71,127,128,131,158,162,167,173,175,204,223,228,301,353}, i -> r4n8#i)
+type2 = apply({76, 77, 78, 118, 221, 228, 459, 536}, i -> r4n8#i)
 assert all(type2, M -> (pairTypes foundation M)#"type 2" > 0)
-assert(areIsomorphic(foundation M, foundation type2#2) and areIsomorphic(foundation M, foundation type2#7) and areIsomorphic(foundation M, foundation type2#12))
-assert Equation(12, #isoTypes(type2/foundation))
+assert Equation(8, #isoTypes(type2/foundation))
 ///
 
 TEST /// -- lifting torsion in morphisms
@@ -1107,7 +1129,10 @@ searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
     zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
     BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
     onePos := (edges kruskalSpanningForest BG)/toList/sort;
-    O := apply(onePos, p -> (position(toList(0..<r), i -> B#i === p#0), p#1));
+    O := apply(onePos, p -> (
+        b := if member(p#0, B) then p#0 else p#1;
+        (position(toList(0..<r), i -> B#i === b), first(p - set{b}))
+    ));
     O = O | apply(r, i -> (i, B#i));
     Z := flatten apply(#D, j -> apply(zeroPos#j, i -> (i, D#j)));
     knownPos := O | Z | flatten apply(r, i -> apply(delete(i, toList(0..<r)), j -> (i, B#j)));
@@ -1116,7 +1141,8 @@ searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
     A := new MutableMatrix from map(k^r, k^n, 0);
     scan(O, p -> A_p = 1);
     (viable, total) := (0, 0);
-    foundRep := while total < opts.Attempts do (
+    maxAttempts := min(opts.Attempts, (k.order - 1)^(#unknowns));
+    foundRep := while total < maxAttempts do (
         total = total + 1;
         if debugLevel > 0 then << "\rTesting candidate " << viable<<"/"<<total << " ... " << flush;
         scan(unknowns, u -> A_u = ( a := random k; while a == 0 do a = random k; a ) );
@@ -1126,8 +1152,8 @@ searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
             if areIsomorphic(M, N) then break true;
         );
     );
-    if foundRep === null then print " Could not find representation - please try again";
-    matrix A
+    if foundRep === null then ( print " Could not find representation - please try again"; return; );
+    matrix A_((sort pairs isomorphism(M, N))/last)
 )
 
 TEST ///
@@ -1326,35 +1352,29 @@ assert(coveringNumber(M, 1) == (3, true))
 ///
 
 ------------------------------------------
--- Single-element representable extensions
+-- Single-element represented extensions
 ------------------------------------------
 
-extinF4 = method()
-extinF4 (Matrix) := List => A -> (
-    r = rank A;
-    entA = entries transpose A;
-    b = first select(flatten entries A, e -> (e != 0 and e !=1));
-    -- b = (GF 4).PrimitiveElement;
-    l := {b-b,b/b,b,b+1};
-    l2 := (l**l)/toList;
-    l3 := (l**l2)/toList/flatten;
-    l4 := (l2**l2)/toList/flatten;
-    l5 := (l2**l3)/toList/flatten;
-    lastCols := if r == 3 then flatten (l2/(c -> {{first l}| c, {l#2} | c})) else if r == 4 then flatten (l3/(c -> {{first l}| c, {l#2} | c})) else if r == 5 then flatten (l4/(c -> {{first l}| c, {l#2} | c})) else if r == 6 then flatten (l5/(c -> {{first l}| c, {l#2} | c})) ;
-    matrices := apply(lastCols, c -> transpose matrix(entA | {c}));
-    matroids := matrices/matroid;
-    select(matroids, M -> isSimple M)
+vectorExtensions = method()
+vectorExtensions Matrix := List => A -> (
+    (m, n) := (numrows A, numcols A);
+    k := ring A;
+    vecs0 := { matrix{{0_k}}, matrix{{1_k}} };
+    k0 := {matrix{{0_k}}} | apply(k.order - 1, e -> matrix{{k.PrimitiveElement^e}});
+    vecs := vecs0;
+    if debugLevel > 0 then << "vectorExtensions: finding extensions of " << m << " x " << n << " matrix..." << endl;
+    for i to m-2 do vecs = flatten apply(vecs, v -> if v == 0 then apply(vecs0, a -> v || a) else apply(k0, a -> v || a));
+    select(apply(vecs, v -> matroid(A | v)), isSimple)
 )
 
-extinOrientF4 = method()
-extinOrientF4 (Matrix) := List => A -> (
-    mats := isoTypes (extinF4(A));
-    select(mats, M -> #morphisms(foundation M, specificPasture "sign", FindOne => true)>0)
+extensions = method()
+extensions (Matrix, List) := List => (A, pastureList) -> (
+    mats := isoTypes vectorExtensions A;
+    select(mats, M -> all(pastureList, P -> #morphisms(foundation M, P, FindOne => true) > 0))
 )
-
-extinOrientF4 (Matroid) := List => M -> (
-    matrices := representations(M, GF 4);
-    isoTypes (flatten apply(matrices, A -> extinOrientF4(A)))
+extensions (Matroid, GaloisField, List) := List => (M, k, pastureList) -> (
+    reps := representations(M, k);
+    isoTypes flatten apply(reps, A -> extensions(A, pastureList))
 )
 
 end--
@@ -1405,40 +1425,6 @@ representations(M, GF 5^2)
 representations(M, GF 7)
 -- reidMatroid(k) is representable over finite field iff order of field is 1 mod k (i.e. field contains primitive kth root of unity)
 
--- 0 = a, 1 = b, 2 = -b, 3 = eps+a-b, 4 = -a, 5 = eps-a+b
-fundEltsU = flatten flatten U.hexagons
-toList((set(0..<#fundEltsU))^** 4/deepSplice/toList);
-H1 = hashTable{(0,1),(1,0),(2,3),(3,2),(4,5),(5,4)}
-elapsedTime quotients = for idx in toList((set(0..<#fundEltsU))^** 4/deepSplice/toList) list (
-    l = {0} | idx;
-    A = (presentation U.multiplicativeGroup) | matrix{apply(5, i -> fundEltsU_(H1#(l#i)) - fundEltsU_(l#((i+1) % 5)) - fundEltsU_(l#((i-1) % 5)))};
-    (g,ch) = smithNormalForm(A, ChangeMatrix => {true, false});
-    piv = select(pivots g,ij -> abs g_ij === 1);
-    (rows, cols) = (first \ piv, last \ piv);
-    (g,ch) = (submatrix'(g,rows,cols),submatrix'(ch,rows,));
-    {idx, pasture(g, ch * U.epsilon, U.hexagons/(h -> h/(p -> p/(e -> (ch * e) % g))))}
-);
-uniQuotients = unique (quotients/last);
-netList (uniQuotients/peek)
-representative = first select(quotients, l -> (last l) === uniQuotients#0)
-
-U = foundation (uniformMatroid_2 4 ++ uniformMatroid_2 4)
-fundEltsU = flatten flatten U.hexagons
-H2 = hashTable{(0,1),(1,0),(2,3),(3,2),(4,5),(5,4),(6,7),(7,6),(8,9),(9,8),(10,11),(11,10)}
-elapsedTime quotients2 = unique for idx in toList((set(0..<#fundEltsU))^** 4/deepSplice/toList) list (
-    if all(idx, i -> i<6) then continue;
-    l = {0} | idx;
-    A = (presentation U.multiplicativeGroup) | matrix{apply(5, i -> fundEltsU_(H2#(l#i)) - fundEltsU_(l#((i+1) % 5)) - fundEltsU_(l#((i-1) % 5)))};
-    (g,ch) = smithNormalForm(A, ChangeMatrix => {true, false});
-    piv = select(pivots g,ij -> abs g_ij === 1);
-    (rows, cols) = (first \ piv, last \ piv);
-    (g,ch) = (submatrix'(g,rows,cols),submatrix'(ch,rows,));
-    pasture(g, ch * U.epsilon, unique (U.hexagons/(h -> h/(p -> p/(e -> (ch * e) % g)))))
-);
-quotients2 = lines get "quotients2.txt" /value;
-elapsedTime isoTypes quotients2;
-netList(isoClasses/peek)
-
 -- Nathan's spike
 n = 4
 X = entries id_((ZZ/2)^n) /(r -> transpose matrix{r})
@@ -1470,13 +1456,6 @@ elapsedTime foundr3 = r3/foundation;
 numericalData = tally apply(foundr3, F -> (#freePartPasture F, #F.hexagons))
 numericalClasses = apply(keys numericalData, k -> foundr3_(positions(foundr3, F -> k == (#freePartPasture F, #F.hexagons))));
 elapsedTime isoTypes foundr3;
-
--- Isomorphism classes of foundations of matroids on 8 elements
-r4 = select(allMatroids 8, M -> rank M <= 4);
-elapsedTime foundr4 = r4/foundation;
-numericalData = tally apply(foundr4, F -> (#freePartPasture F, #F.hexagons))
-numericalClasses = apply(keys numericalData, k -> foundr4_(positions(foundr4, F -> k == (#freePartPasture F, #F.hexagons))));
-elapsedTime isoTypes foundr4;
 
 -- single element extensions
 linearSubclasses = method()
