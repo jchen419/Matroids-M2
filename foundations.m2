@@ -551,7 +551,7 @@ foundation Matroid := Foundation => opts -> M -> (
             p := position(IS, I -> isSubset(I, F));
             if p =!= null then (F, IS#p)
         )));
-        U24minors = flatten apply(keys corank2Table, F -> (
+        U24minors = flatten apply((sort((keys corank2Table)/keys/sort))/set, F -> (
             apply(subsets(apply(select(hyperplanes M, H -> isSubset(F, H)), H -> first toList(H - F)), 4), s -> {corank2Table#F, sort s})
         ));
         u = #U24minors;
@@ -1072,10 +1072,13 @@ assert Equation(2, #morphisms(foundation M, pasture k))
 ///
 
 TEST /// -- all matroids on <= 8 elements with a type 2 pair in foundation
+M = matroid(toList(0..<8), {{0,1,2},{0,3,4},{1,3,5},{1,4,7},{2,3,6},{2,5,7},{4,5,6}}, EntryMode => "nonbases")
+assert Equation(1, (pairTypes foundation M)#"type 2")
 r4n8 = allMatroids(8, 4);
-type2 = apply({76, 77, 78, 118, 221, 228, 459, 536}, i -> r4n8#i)
-assert all(type2, M -> (pairTypes foundation M)#"type 2" > 0)
-assert Equation(8, #isoTypes(type2/foundation))
+type2 = apply({17,49,71,91,119,120,121,124,127,128,130,131,134,141,143,154,155,158,161,162,165,167,173,174,175,194,196,197,206,222,223,228,285,286,288,648}, i -> r4n8#i)
+assert all(type2, N -> (pairTypes foundation N)#"type 2" > 0)
+assert(areIsomorphic(foundation M, foundation type2#9) and areIsomorphic(foundation M, foundation type2#22))
+assert(#type2 == 36 and Equation(#type2 - 1, #isoTypes(type2/foundation)))
 ///
 
 TEST /// -- lifting torsion in morphisms
@@ -1084,6 +1087,19 @@ P2 = pasture([w,z], "w^3*z^5 + w^2*z^6, w+z")
 P3 = pasture([x], "-x^3,x+x^(-1),x^2+x^4")
 assert Equation(8, #morphisms(P1, P3))
 assert Equation(8, #morphisms(P2, P3))
+///
+
+TEST /// -- foundations with same additive group and numbers of hexagons, but different numbers of fundamental elements
+M1 = (allMatroids(8,4))#204
+M2 = (allMatroids(8,4))#223
+assert((foundation M1).multiplicativeGroup == (foundation M2).multiplicativeGroup)
+assert(#(foundation M1).hexagons == #(foundation M2).hexagons)
+assert(#unique flatten flatten(foundation M1).hexagons == 54)
+assert(#unique flatten flatten(foundation M2).hexagons == 60)
+assert not areIsomorphic(foundation M1, foundation M2)
+mor12 = morphisms(foundation M1, foundation M2)
+assert(#mor12 == 4 and all(mor12, phi -> det phi == 0))
+assert(#morphisms(foundation M2, foundation M1) == 0)
 ///
 
 ------------------------------------------
@@ -1158,17 +1174,11 @@ searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
 
 TEST ///
 N = matroid(toList(0..7), {{0,1,2,3},{0,1,4,5},{2,3,4,5},{0,2,4,6},{1,3,5,7},{1,2,6,7},{3,4,6,7},{0,5,6,7}}, EntryMode => "nonbases")
+N0 = (allMatroids(8,4))#128
+assert(N == N0)
 assert(pairTypes foundation N === hashTable apply({(1,1),(2,0),(3,1),(4,2)}, p -> ("type " | toString p#0, p#1)))
-///
-
-TEST ///
 N1 = matroid(toList(0..8), {{0,1,2,3},{0,1,4,5},{0,2,4,6},{1,3,5,6},{1,2,4,7},{2,3,5,7},{3,4,6,7},{0,5,6,7},{0,1,4,8},{0,2,4,8},{0,3,4,8},{0,1,5,8},{2,3,5,8},{0,4,5,8},{1,4,5,8},{0,2,6,8},{0,4,6,8},{2,4,6,8},{2,3,7,8},{0,4,7,8},{2,5,7,8},{3,5,7,8},{1,6,7,8}}, EntryMode => "nonbases")
-G = pasture([x], "x + x^2")
-assert(pairTypes G === hashTable apply({(1,0),(2,1),(3,0),(4,0)}, p -> ("type " | toString p#0, p#1)))
-assert Equation(2, #morphisms(foundation N1, G))
-///
-
-TEST ///
+assert areIsomorphic(foundation N1, specificPasture G)
 N2 = matroid(toList(0..8), {{0,1,2,3},{0,1,2,4},{0,1,3,4},{0,2,3,4},{1,2,3,4},{0,1,5,6},{2,3,5,6},{0,2,5,7},{1,4,5,7},{1,2,6,7},{3,4,6,7},{0,1,2,8},{0,1,3,8},{0,2,3,8},{1,2,3,8},{0,1,4,8},{0,2,4,8},{1,2,4,8},{0,3,4,8},{1,3,4,8},{2,3,4,8},{2,3,5,8},{0,4,5,8},{2,3,6,8},{0,4,6,8},{2,5,6,8},{3,5,6,8},{2,3,7,8},{0,4,7,8}}, EntryMode => "nonbases")
 assert(pairTypes foundation N2 === hashTable apply({(1,1),(2,0),(3,1),(4,1)}, p -> ("type " | toString p#0, p#1)))
 assert Equation(2, #morphisms(foundation N2, pasture GF 4))
@@ -1517,6 +1527,7 @@ set includedIndices
 -- compute symmetry quotients?
 -- Natural map between different presentations of foundation
 -- Finish single element extensions via linear subclasses
+-- Create example where number of type 3 pairs changes when reordering fundamental pairs
 
 restart
 load "foundations.m2"
