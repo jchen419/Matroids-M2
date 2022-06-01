@@ -427,6 +427,24 @@ assert(#kruskalSpanningForest G == #vertices G - 1)
 assert(#edges spanningForest G == #vertices G - 2)
 ///
 
+makeBipartiteGraphMatroid = method(Options => {Outputs => "withBasis"})
+makeBipartiteGraphMatroid Matroid := List => opts -> M -> (
+    if not M.cache#?"gammaSpanningForest" then M.cache#"gammaSpanningForest" = (
+        B := sort toList first bases M;
+        D := sort toList (M.groundSet - B);
+        S := toList(0..<rank M);
+        zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(S, i -> not member(B#i, C))));
+        BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
+        onePos := (edges kruskalSpanningForest BG)/toList/sort;
+        M.cache#"representationOnePositions" = apply(onePos, p -> (
+            b := if member(p#0, B) then p#0 else p#1;
+            (position(S, i -> B#i === b), first(p - set{b}))
+        )) | apply(#B, i -> (i, B#i));
+        onePos
+    );
+    if opts.Outputs === "withBasis" then M.cache#"representationOnePositions" else M.cache#"gammaSpanningForest"
+)
+
 foundation = method(Options => {Strategy => null, HasF7Minor => null, HasF7dualMinor => null})
 foundation Matroid := Foundation => opts -> M -> (
     if M.cache#?"foundation" and (opts.Strategy === null or M.cache#"foundation".cache#"strategy" === opts.Strategy) then M.cache#"foundation" else M.cache#"foundation" = (
@@ -537,10 +555,7 @@ foundation Matroid := Foundation => opts -> M -> (
         if trivialCrossRatios == 0 then trivialCrossRatios = map(ZZ^(#bases M+1),ZZ^0,0);
         if dbg > 0 then << "foundation: " << numcols trivialCrossRatios << " relations found." << endl;
         B := sort toList first bases M;
-        D := sort toList (M.groundSet - B);
-        zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
-        BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
-        onePos := (edges kruskalSpanningForest BG)/toList/sort;
+        onePos := makeBipartiteGraphMatroid(M, Outputs => "noBasis");
         if dbg > 0 then << "foundation: Spanning forest: " << onePos << endl;
         imDegMap := matrix({G_1} | apply(onePos, p -> G_(basesMap#(set B + set p - (set B*set p))))); -- corank of image of degree map = #connectedComponents BG - 1
         (g, ch) = myMinPres (2*eps | trivialCrossRatios | imDegMap);
@@ -561,7 +576,7 @@ foundation Matroid := Foundation => opts -> M -> (
             l = apply(l, q -> ch_(basesMap#(p#0 + q)));
             {l#0 + l#1 - l#2 - l#3, l#4 + l#5 - l#2 - l#3}/matrix
         )));
-        cacheList = {("pruningMapB", ch), ("genTableB", basesMap), ("imDegMap", imDegMap), ("spanningForest", onePos)};
+        cacheList = {("pruningMapB", ch), ("genTableB", basesMap), ("imDegMap", imDegMap)};
     );
     debugLevel = dbg;
     new Foundation from {
@@ -1072,13 +1087,22 @@ assert Equation(2, #morphisms(foundation M, pasture k))
 ///
 
 TEST /// -- all matroids on <= 8 elements with a type 2 pair in foundation
-M = matroid(toList(0..<8), {{0,1,2},{0,3,4},{1,3,5},{1,4,7},{2,3,6},{2,5,7},{4,5,6}}, EntryMode => "nonbases")
-assert Equation(1, (pairTypes foundation M)#"type 2")
+r3n8 = allMatroids(8, 3);
+L3 = {21,50,51,57,86}
+type2r3 = apply(L3, i -> r3n8#i);
+assert all(type2r3, N -> (pairTypes foundation N)#"type 2" > 0)
+assert areIsomorphic(foundation type2r3#2, foundation type2r3#4)
+assert(Equation(#type2r3-1, #isoTypes(type2r3/foundation)))
 r4n8 = allMatroids(8, 4);
-type2 = apply({17,49,71,91,119,120,121,124,127,128,130,131,134,141,143,154,155,158,161,162,165,167,173,174,175,194,196,197,206,222,223,228,285,286,288,648}, i -> r4n8#i)
-assert all(type2, N -> (pairTypes foundation N)#"type 2" > 0)
-assert(areIsomorphic(foundation M, foundation type2#9) and areIsomorphic(foundation M, foundation type2#22))
-assert(#type2 == 36 and Equation(#type2 - 1, #isoTypes(type2/foundation)))
+L4 = {17,49,71,91,119,120,121,124,127,128,130,131,134,141,143,154,155,158,161,162,165,167,173,174,175,194,196,197,206,222,223,228,285,286,288,648}
+type2r4 = apply(L4, i -> r4n8#i);
+assert all(type2r4, N -> (pairTypes foundation N)#"type 2" > 0)
+assert areIsomorphic(foundation type2r4#9, foundation type2r4#22)
+assert(Equation(#type2r4-1, #isoTypes(type2r4/foundation)))
+assert areIsomorphic(foundation type2r3#0, foundation type2r4#9)
+assert areIsomorphic(foundation type2r3#2, foundation type2r4#35)
+assert not any(type2r4, N -> areIsomorphic(foundation type2r3#3, foundation N))
+-- Note: areIsomorphic(foundation type2r3#1, foundation type2r4#33) is true, but takes ~4 min.
 ///
 
 TEST /// -- lifting torsion in morphisms
@@ -1106,8 +1130,7 @@ assert(#morphisms(foundation M2, foundation M1) == 0)
 -- Representations via pasture morphisms
 ------------------------------------------
 
-representation = method()
-representation (Matroid, PastureMorphism) := Matrix => (M, phi) -> (
+getRepresentation (Matroid, PastureMorphism) := Matrix => (M, phi) -> (
     F := foundation(M, Strategy => "bases");
     if source phi =!= F then error "representation: Expected source of phi to equal the foundation of M";
     B := sort toList first bases M;
@@ -1130,12 +1153,16 @@ representations (Matroid, GaloisField) := List => opts -> (M, k) -> (
     -- reps := apply(morphisms(foundation M, pasture k, opts), representation_M);
     -- apply(reps, A -> matrix table(rank M, #M_*, (i,j) -> (
     maps := morphisms(foundation(M, Strategy => "bases"), pasture k, opts);
-    apply(maps/representation_M, A -> matrix table(rank M, #M_*, (i,j) -> (
+    O := makeBipartiteGraphMatroid M;
+    apply(maps/getRepresentation_M, A -> rescalingRepresentative(matrix table(rank M, #M_*, (i,j) -> (
         if A#i#j === 0 then 0_k
         else if A#i#j === 1 then 1_k
         else (k.PrimitiveElement)^(if A#i#j == 0 then 0 else (A#i#j)_(0,0))
-    )))
+    )), O))
 )
+
+randomNonzero = method()
+randomNonzero Ring := RingElement => k -> ( a := random k; while a == 0 do a = random k; a )
 
 searchRepresentation = method(Options => {symbol Attempts => 10000})
 searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
@@ -1143,25 +1170,20 @@ searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
     B := sort toList first bases M;
     D := sort toList (M.groundSet - B);
     zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
-    BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
-    onePos := (edges kruskalSpanningForest BG)/toList/sort;
-    O := apply(onePos, p -> (
-        b := if member(p#0, B) then p#0 else p#1;
-        (position(toList(0..<r), i -> B#i === b), first(p - set{b}))
-    ));
-    O = O | apply(r, i -> (i, B#i));
+    O := makeBipartiteGraphMatroid M;
     Z := flatten apply(#D, j -> apply(zeroPos#j, i -> (i, D#j)));
     knownPos := O | Z | flatten apply(r, i -> apply(delete(i, toList(0..<r)), j -> (i, B#j)));
     unknowns := toList((0,0)..(r-1,n-1)) - set knownPos;
     if debugLevel > 0 then << "searchRepresentation: #unknowns = " << #unknowns << endl;
     A := new MutableMatrix from map(k^r, k^n, 0);
     scan(O, p -> A_p = 1);
+    -- M.cache#"representationCandidate" = matrix A;
     (viable, total) := (0, 0);
     maxAttempts := min(opts.Attempts, (k.order - 1)^(#unknowns));
     foundRep := while total < maxAttempts do (
         total = total + 1;
-        if debugLevel > 0 then << "\rTesting candidate " << viable<<"/"<<total << " ... " << flush;
-        scan(unknowns, u -> A_u = ( a := random k; while a == 0 do a = random k; a ) );
+        if debugLevel > 0 then << "\rTesting candidate " << viable << "/" << total << " ... " << flush;
+        scan(unknowns, u -> A_u = randomNonzero k );
         N := matroid matrix A;
         if #bases N === #bases M then (
             viable = viable + 1;
@@ -1169,7 +1191,29 @@ searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
         );
     );
     if foundRep === null then ( print " Could not find representation - please try again"; return; );
-    matrix A_((sort pairs isomorphism(M, N))/last)
+    A = matrix A_((sort pairs isomorphism(M, N))/last); -- makes matroid A == M
+    rescalingRepresentative(A, O)
+)
+
+rescalingRepresentative = method()
+rescalingRepresentative (Matrix, List) := Matrix => (A, O) -> (
+    k := ring A;
+    r := numrows A; -- assumes A is full rank
+    B := take(O, -r)/last;
+    A = inverse(A_B) * A;
+    colHash := hashTable((a,b) -> flatten{a, b}, drop(O, -r) /reverse);
+    E := id_(k^r);
+    C := transpose matrix{(flatten apply(select(keys colHash, k -> not instance(colHash#k, ZZ)), c -> (
+        apply(drop(colHash#c, 1), row -> (
+            A_((colHash#c)#0,c)*E^{(colHash#c)#0} - A_(row,c)*E^{row}
+        ))
+    )))/transpose};
+    if debugLevel > 0 then << "rescalingRepresentative: " << C << endl;
+    -- D := diagonalMatrix(E_{0} // (E^{0} || C));
+    K := gens ker C;
+    D := diagonalMatrix flatten entries sum(numcols K, i -> randomNonzero k * K_{i});
+    A = D*A;
+    A*inverse diagonalMatrix apply(numcols A, j -> if colHash#?j then A_(if instance(colHash#j, ZZ) then colHash#j else colHash#j#0, j) else if member(j, B) then A_(position(B, p -> j == p), j) else 1_k)
 )
 
 TEST ///
@@ -1211,11 +1255,11 @@ isPositivelyOriented Matroid := Boolean => M -> (
 positiveOrientation = method()
 positiveOrientation Matroid := List => M -> (
     aut := getIsos(M, M);
-    checkedPerms := set{};
+    checkedPerms := new MutableHashTable;
     for phi in permutations (#M_*) do (
         if checkedPerms#?phi then continue;
         if isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits") then return phi;
-        checkedPerms = checkedPerms + set apply(aut, f -> phi_f);
+        scan(aut, f -> checkedPerms#(phi_f) = 1);
     );
     null
     -- any(permutations (#M_*), phi -> isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits"))
@@ -1261,8 +1305,9 @@ inducedMapFromMinor (Matroid, ZZ, String) := PastureMorphism => (M, e, mode) -> 
         I := id_(ZZ^(#bases M));
         b0 := first bases N;
         E := id_(ZZ^(#N_*));
-        D := matrix{apply(G.cache#"spanningForest", e -> E_{e#1} - E_{e#0})};
-        J := matrix{apply(G.cache#"spanningForest", e -> 1)} || map(ZZ^(#bases N-1), ZZ^(#G.cache#"spanningForest"), 0);
+        sf := N.cache#"gammaSpanningForest"; -- G.cache#"spanningForest"
+        D := matrix{apply(sf, e -> E_{e#1} - E_{e#0})};
+        J := matrix{apply(sf, e -> 1)} || map(ZZ^(#bases N-1), ZZ^(#sf), 0);
         K := matrix{apply(#bases N, e -> 1)} || map(ZZ^(#bases N-1), ZZ^(#bases N), 0);
         delta := id_(ZZ^1) ++ (id_(ZZ^(#bases N)) - K - matrix{apply(bases N, b -> (
             v := transpose matrix{apply(#N_*, i -> if (member(i, b) and not member(i, b0)) then 1 else if (not member(i, b) and member(i, b0)) then -1 else 0)};
@@ -1342,23 +1387,22 @@ coveringNumber (Matroid, ZZ) := Sequence => (M, opt) -> (
     if #L =!= #L0 then r = 1;
     if opt == 0 then (
     	while n < #L and not isSubset(all5EltMinors, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
-    	result := (r, isSubset(all5EltMinors, L));
-    ) 
-    else if opt == 1 then(
+    	(r, isSubset(all5EltMinors, L))
+    ) else if opt == 1 then (
 	while n < #L and not isSubset(U24Minors, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
-    	result = (r, isSubset(U24Minors, L));
-    )
-    else if opt == 2 then(
+    	(r, isSubset(U24Minors, L))
+    ) else if opt == 2 then (
 	if #additional4Elts == 0 then r = 0;
 	while n < #L and not isSubset(additional4Elts, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
-    	result = (r, isSubset(additional4Elts, L));
-    );
-    result	
+    	(r, isSubset(additional4Elts, L))
+    )
 )
 
 TEST ///
 M = specificMatroid "Q6"
+assert(coveringNumber(M, 0) == (2, true))
 assert(coveringNumber(M, 1) == (3, true))
+assert(coveringNumber(M, 2) == (0, true))
 ///
 
 ------------------------------------------
@@ -1383,7 +1427,7 @@ extensions (Matrix, List) := List => (A, pastureList) -> (
     select(mats, M -> all(pastureList, P -> #morphisms(foundation M, P, FindOne => true) > 0))
 )
 extensions (Matroid, GaloisField, List) := List => (M, k, pastureList) -> (
-    reps := representations(M, k);
+    reps := representations(M, k); -- is FindOne sufficient here?
     isoTypes flatten apply(reps, A -> extensions(A, pastureList))
 )
 
@@ -1426,7 +1470,7 @@ reidMatroid := k -> matroid(
     id_(K^3) | matrix{{1,1},{1-alpha,1},{1,0}} | matrix{apply(k-1, i -> ( f = sum(i+1, j -> alpha^j); matrix{{1,0},{1,1},{f,f}} ))}
 )
 areIsomorphic(reidMatroid(2), specificMatroid "nonfano")
-M = reidMatroid(6)
+M = reidMatroid(10)
 elapsedTime F = foundation M
 representations(M, GF 2^8)
 representations(M, GF 3^5)
@@ -1503,18 +1547,18 @@ isolatedHypSets (List, List) := Set => (hyp, upSets) -> (
 )
 
 elapsedTime tally apply(subsets(28, 2), s -> (
-includedIndices = s; 
-s0 = unique flatten upSets_includedIndices; 
-finishGen = false; 
+includedIndices = s;
+s0 = unique flatten upSets_includedIndices;
+finishGen = false;
 while finishGen == false do (
-    currentSize = #includedIndices; 
-    for i in toList(0..<28) - set includedIndices do(
-	if #(set(upSets#i) * set(s0)) > 1 then ( 
+    currentSize = #includedIndices;
+    for i in toList(0..<28) - set includedIndices do (
+	if #(set(upSets#i) * set(s0)) > 1 then (
 	    s0 = unique(s0 | upSets#i);
 	    includedIndices = append(includedIndices, i);
 	    break;
-	); 
-    ); 
+	);
+    );
     if #includedIndices == currentSize then finishGen = true;
 );
 set includedIndices
