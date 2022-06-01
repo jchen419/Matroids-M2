@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.5.1",
-	Date => "May 6, 2022",
+	Version => "1.5.2",
+	Date => "May 31, 2022",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -444,6 +444,7 @@ hasMinor = method(Options => {Strategy => "flats"})
 hasMinor (Matroid, Matroid) := Boolean => opts -> (M, N) -> (
 	(n, m) := (#N.groundSet, #M.groundSet);
 	if n > m or rank N > rank M or #bases N > #bases M then return false;
+	if n == m then return M == N;
 	if opts.Strategy === "flats" and isSimple N then (
 		v := fVector N;
 		truncatedLattice := select(flats(M, rank N, "corank"), f -> rank_M f >= rank M - rank N);
@@ -451,6 +452,7 @@ hasMinor (Matroid, Matroid) := Boolean => opts -> (M, N) -> (
 		truncatedLattice = truncatedLattice - set possibleFlats;
 		for f in possibleFlats do (
 			if any(1..<rank N, i -> #select(truncatedLattice, F -> rank_M F == rank M - rank N + i and isSubset(f, F)) < v#i) then continue;
+			if debugLevel > 1 then printerr("hasMinor: testing flat " | toString(f));
 			Mf := M/f;
 			for Y in independentSets(dual Mf, m - n - #f) do (
 				if areIsomorphic(N, Mf \ Y) then (
@@ -723,25 +725,20 @@ relabel Matroid := Matroid => M -> (
 getIsos = method()
 getIsos (Matroid, Matroid) := List => (M, N) -> (
 	(C, D, e) := (sort(circuits M, c -> #c), circuits N, #M.groundSet);
-	if not tally sizes C === tally sizes D then return {};
-	if #C == 0 then return permutations e;
-	local possibles, local c0, local shiftedIndices, local d1, local B, local candidate;
-	possibles = {};
+	if not(e === #N.groundSet and tally sizes C === tally sizes D) then return {};
+	if #C === 0 or #C#0 === 1 + rank M then return permutations e;
+	possibles := {};
 	if e > 5 then (
-		c0 = toList C#0;
-		shiftedIndices = apply(e, i -> i - #select(c0, j -> j < i));
-		for d0 in select(D, d -> #d == #c0)/toList do (
-			d1 = sort keys(N.groundSet - d0);
-			B = apply(permutations d0, q -> hashTable apply(#q, i -> c0#i => q#i));
-			possibles = possibles | flatten apply(getIsos(M \ set c0, N \ set d0), p -> (
-				flatten apply(B, q -> (
-					candidate = apply(e, i -> if member(i, c0) then q#i else (d1)#(p#(shiftedIndices#i)));
-					if all(C, c -> member(c/(i -> candidate#i), D)) then {candidate} else {}
-				))
-			));
-		);
-		return possibles;
-	) else return select(permutations(e), p -> all(C, c -> member(c/(i -> p#i), D)));
+		c0 := hashTable apply(#C#0, i -> (keys C#0)#i => i);
+		shiftedIndices := apply(e, i -> i - #select(keys c0, j -> j < i));
+		flatten for d0 in select(D, d -> #d == #c0)/toList list (
+			d1 := sort keys(N.groundSet - d0);
+			delete(null, flatten table(getIsos(M \ C#0, N \ set d0), permutations d0, (p, q) -> (
+				candidate := apply(e, i -> if c0#?i then q#(c0#i) else (d1)#(p#(shiftedIndices#i)));
+				if all(C, c -> member(c/(i -> candidate#i), D)) then candidate
+			)))
+		)
+	) else select(permutations(e), p -> all(C, c -> member(c/(i -> p#i), D)))
 )
 
 isomorphism (Matroid, Matroid) := HashTable => (M, N) -> ( -- assumes (M, N) satisfy "Could be isomorphic" by quickIsomorphismTest
@@ -1191,3 +1188,4 @@ check "Matroids"
 
 -- TODO:
 -- Update documentation
+-- reducedRowEchelonForm does not work with initial zero rows => cannot compute induced representation for e.g. (matroid completeGraph 4) / set{0,1,3}
