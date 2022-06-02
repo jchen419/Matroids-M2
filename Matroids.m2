@@ -727,17 +727,19 @@ getIsos (Matroid, Matroid) := List => (M, N) -> (
 	(C, D, e) := (sort(circuits M, c -> #c), circuits N, #M.groundSet);
 	if not(e === #N.groundSet and tally sizes C === tally sizes D) then return {};
 	if #C === 0 or #C#0 === 1 + rank M then return permutations e;
-	possibles := {};
 	if e > 5 then (
+		isos := new MutableHashTable;
 		c0 := hashTable apply(#C#0, i -> (keys C#0)#i => i);
 		shiftedIndices := apply(e, i -> i - #select(keys c0, j -> j < i));
-		flatten for d0 in select(D, d -> #d == #c0)/toList list (
+		for d0 in select(D, d -> #d == #c0)/toList do (
 			d1 := sort keys(N.groundSet - d0);
-			delete(null, flatten table(getIsos(M \ C#0, N \ set d0), permutations d0, (p, q) -> (
+			d1 = hashTable apply(#d1, i -> i => d1#i);
+			table(getIsos(M \ C#0, N \ set d0), permutations d0, (p, q) -> (
 				candidate := apply(e, i -> if c0#?i then q#(c0#i) else (d1)#(p#(shiftedIndices#i)));
-				if all(C, c -> member(c/(i -> candidate#i), D)) then candidate
-			)))
-		)
+				if all(C, c -> member(c/(i -> candidate#i), D)) then isos#candidate = 1;
+			))
+		);
+		keys isos
 	) else select(permutations(e), p -> all(C, c -> member(c/(i -> p#i), D)))
 )
 

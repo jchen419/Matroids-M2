@@ -1341,13 +1341,17 @@ assert(0 != det phi2 and member(phi2, morphisms(foundation(N2, Strategy => strat
 -- (Quasi-)Fixed/cofixed elements
 ------------------------------------------
 
-isQuasiFixed = (M, e) -> coker (inducedMapFromMinor(M, e, "delete")).map == 0
+isQuasiFixed = method()
+isQuasiFixed (Matroid, ZZ) := Boolean => (M, e) -> coker (inducedMapFromMinor(M, e, "delete")).map == 0
 
-isQuasiCofixed = (M, e) -> isQuasiFixed(dual M, e)
+isQuasiCofixed = method()
+isQuasiCofixed (Matroid, ZZ) := Boolean => (M, e) -> isQuasiFixed(dual M, e)
 
-cosimpleMatroid = M -> dual simpleMatroid dual M
+cosimpleMatroid = method()
+cosimpleMatroid Matroid := Matroid => M -> dual simpleMatroid dual M
 
-isQuasiFree = M -> (
+isQuasiFree = method()
+isQuasiFree Matroid := Boolean => M -> (
     if not is3Connected M then return false;
     all(select(toList(0..<#M_*), e -> isQuasiFixed_M e), e -> not is3Connected cosimpleMatroid (M\{e})) and  all(select(toList(0..<#M_*), e -> isQuasiCofixed_M e), e -> not is3Connected simpleMatroid (M/{e}))
 )
@@ -1389,11 +1393,11 @@ coveringNumber (Matroid, ZZ) := Sequence => (M, opt) -> (
     	while n < #L and not isSubset(all5EltMinors, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
     	(r, isSubset(all5EltMinors, L))
     ) else if opt == 1 then (
-	while n < #L and not isSubset(U24Minors, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
+        while n < #L and not isSubset(U24Minors, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
     	(r, isSubset(U24Minors, L))
     ) else if opt == 2 then (
-	if #additional4Elts == 0 then r = 0;
-	while n < #L and not isSubset(additional4Elts, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
+        if #additional4Elts == 0 then r = 0;
+        while n < #L and not isSubset(additional4Elts, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
     	(r, isSubset(additional4Elts, L))
     ) else if opt == 3 then (
         while n < #L and not isSubset(V, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
