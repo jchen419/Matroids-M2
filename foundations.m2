@@ -427,22 +427,22 @@ assert(#kruskalSpanningForest G == #vertices G - 1)
 assert(#edges spanningForest G == #vertices G - 2)
 ///
 
-makeBipartiteGraphMatroid = method(Options => {Outputs => "withBasis"})
-makeBipartiteGraphMatroid Matroid := List => opts -> M -> (
-    if not M.cache#?"gammaSpanningForest" then M.cache#"gammaSpanningForest" = (
+coordinatingPath = method(Options => {Outputs => "withBasis"})
+coordinatingPath Matroid := List => opts -> M -> (
+    if not M.cache#?"coordinatingPath" then M.cache#"coordinatingPath" = (
         B := sort toList first bases M;
         D := sort toList (M.groundSet - B);
         S := toList(0..<rank M);
         zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(S, i -> not member(B#i, C))));
         BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
         onePos := (edges kruskalSpanningForest BG)/toList/sort;
-        M.cache#"representationOnePositions" = apply(onePos, p -> (
+        M.cache#"coordinatingPathBasis" = apply(onePos, p -> (
             b := if member(p#0, B) then p#0 else p#1;
             (position(S, i -> B#i === b), first(p - set{b}))
         )) | apply(#B, i -> (i, B#i));
         onePos
     );
-    if opts.Outputs === "withBasis" then M.cache#"representationOnePositions" else M.cache#"gammaSpanningForest"
+    if opts.Outputs === "withBasis" then M.cache#"coordinatingPathBasis" else M.cache#"coordinatingPath"
 )
 
 foundation = method(Options => {Strategy => null, HasF7Minor => null, HasF7dualMinor => null})
@@ -555,7 +555,7 @@ foundation Matroid := Foundation => opts -> M -> (
         if trivialCrossRatios == 0 then trivialCrossRatios = map(ZZ^(#bases M+1),ZZ^0,0);
         if dbg > 0 then << "foundation: " << numcols trivialCrossRatios << " relations found." << endl;
         B := sort toList first bases M;
-        onePos := makeBipartiteGraphMatroid(M, Outputs => "noBasis");
+        onePos := coordinatingPath(M, Outputs => "noBasis");
         if dbg > 0 then << "foundation: Spanning forest: " << onePos << endl;
         imDegMap := matrix({G_1} | apply(onePos, p -> G_(basesMap#(set B + set p - (set B*set p))))); -- corank of image of degree map = #connectedComponents BG - 1
         (g, ch) = myMinPres (2*eps | trivialCrossRatios | imDegMap);
@@ -1153,7 +1153,7 @@ representations (Matroid, GaloisField) := List => opts -> (M, k) -> (
     -- reps := apply(morphisms(foundation M, pasture k, opts), representation_M);
     -- apply(reps, A -> matrix table(rank M, #M_*, (i,j) -> (
     maps := morphisms(foundation(M, Strategy => "bases"), pasture k, opts);
-    O := makeBipartiteGraphMatroid M;
+    O := coordinatingPath M;
     apply(maps/getRepresentation_M, A -> rescalingRepresentative(matrix table(rank M, #M_*, (i,j) -> (
         if A#i#j === 0 then 0_k
         else if A#i#j === 1 then 1_k
@@ -1170,7 +1170,7 @@ searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
     B := sort toList first bases M;
     D := sort toList (M.groundSet - B);
     zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
-    O := makeBipartiteGraphMatroid M;
+    O := coordinatingPath M;
     Z := flatten apply(#D, j -> apply(zeroPos#j, i -> (i, D#j)));
     knownPos := O | Z | flatten apply(r, i -> apply(delete(i, toList(0..<r)), j -> (i, B#j)));
     unknowns := toList((0,0)..(r-1,n-1)) - set knownPos;
@@ -1305,7 +1305,7 @@ inducedMapFromMinor (Matroid, ZZ, String) := PastureMorphism => (M, e, mode) -> 
         I := id_(ZZ^(#bases M));
         b0 := first bases N;
         E := id_(ZZ^(#N_*));
-        sf := N.cache#"gammaSpanningForest"; -- G.cache#"spanningForest"
+        sf := N.cache#"coordinatingPath"; -- G.cache#"spanningForest"
         D := matrix{apply(sf, e -> E_{e#1} - E_{e#0})};
         J := matrix{apply(sf, e -> 1)} || map(ZZ^(#bases N-1), ZZ^(#sf), 0);
         K := matrix{apply(#bases N, e -> 1)} || map(ZZ^(#bases N-1), ZZ^(#bases N), 0);
