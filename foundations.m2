@@ -1395,8 +1395,45 @@ coveringNumber (Matroid, ZZ) := Sequence => (M, opt) -> (
 	if #additional4Elts == 0 then r = 0;
 	while n < #L and not isSubset(additional4Elts, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
     	(r, isSubset(additional4Elts, L))
+    ) else if opt == 3 then (
+        while n < #L and not isSubset(V, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
+        (r, isSubset(V, L))
     )
 )
+
+fundDiagram2 = method()
+fundDiagram2 Matroid := Sequence => M -> (
+    minorList := {uniformMatroid_2 4, uniformMatroid_2 5, specificMatroid "C5"};
+    minorList = minorList | (minorList_{1,2}/dual);
+    U24minors := allMinors(M, minorList#0);
+    otherMinors := apply(toList(1..4), i -> allMinors(M, minorList#i));
+    numMinors := prepend(#U24minors, apply(otherMinors, s -> #s));
+    U := numMinors#0;
+    N := sum numMinors - U;
+    -- (U, N1, N2) := (numMinors#0, numMinors#-3 + numMinors#-2, numMinors#-1);
+    -- N := sum numMinors - N1 - N2 - U;
+    otherMinors = flatten otherMinors;
+    V := toList(0..<(#U24minors + #otherMinors));
+    E := delete(null, flatten table(U, N, (i, j) -> if isSubset(otherMinors#j#0, U24minors#i#0) and isSubset(otherMinors#j#1, U24minors#i#1) then {i, U+j}));
+    -- E = E | delete(null, flatten table(N1, N2, (i, j) -> if isSubset(otherMinors#(N+N1+j)#0, otherMinors#(N+i)#0) and isSubset(otherMinors#(N+N1+j)#1, otherMinors#(N+i)#1) then {U+N+i, U+N+N1+j}));
+    (numMinors, V, E)
+)
+
+MVradius = method()
+MVradius Matroid := Sequence => M -> (
+    (S, V, E) := fundDiagram2 M;
+    H := hashTable((a,b) -> flatten {a,b}, E | E/reverse);
+    L0 := apply(S#1, i -> i + S#0) | apply(S#3, i -> i + S#0+S#1+S#2);
+    -- all5EltMinors := toList(S#0..<(#V-S#-1));
+    -- additional4Elts := toList((#V-S#-1-S#-2-S#-3)..<(#V-S#-1));
+    U24Minors := toList(0..<S#0);
+    (n, r) := (#L0, 0);
+    L := unique(L0 | H_L0);
+    if #L =!= #L0 then r = 1;
+    while n < #L and not isSubset(V, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
+    (r, isSubset(V, L))	
+)
+
 
 TEST ///
 M = specificMatroid "Q6"
@@ -1452,7 +1489,10 @@ N = matroid(toList(0..<8), {{0,1,2,3},{0,1,4,5},{2,3,4,5},{0,1,6,7},{2,3,6,7},{4
 GF 4; D = matrix{{1,0,0,1,a,1,0,a+1,1},{0,1,0,a,a,1,a,1,a+1},{0,0,1,0,1,1,1,1,1}}
 GF 4; D = matrix{{1,0,0,1,a+1,1,0,a,1},{0,1,0,a+1,a+1,1,a+1,1,a},{0,0,1,0,1,1,1,1,1}}
 M = matroid (matrix{{7:1}} || transpose matrix {{-3,0},{-3/4,-1},{3/2,-2},{-3/4,1},{3/2,2},{0,0},{3,0}}) -- Example 2.2 in paper
-
+V3 = pasture([x,y,z],"x+y,z-y,x*z+y^2");
+V5 = pasture([x,y],"x+y, x*y-y,x^2*y-1,-y^2");
+V7 = pasture([x,y],"-1,x+y,x^2+y^2");
+V9 = pasture([x,y],"-1,-x-1,-y-1,-x*y-1");
 -- Note: for wheels/whirls, computing foundations via Strategy => "hyperplanes" is faster, but the opposite is true for spikes/swirls
 
 -- a class of non-orientable matroids (Bland--Las-Vergnas, Orientability of Matroids, Ex. 3.11, https://www.sciencedirect.com/science/article/pii/0095895678900801)
@@ -1576,3 +1616,4 @@ set includedIndices
 restart
 load "foundations.m2"
 debugLevel = 1
+
