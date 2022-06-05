@@ -1,7 +1,7 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.5.2",
-	Date => "May 31, 2022",
+	Version => "1.5.3",
+	Date => "June 4, 2022",
 	Authors => {{
 		Name => "Justin Chen",
 		Email => "jchen@math.berkeley.edu",
@@ -95,7 +95,10 @@ export {
 	"allMatroids",
 	"allMinors",
 	"toSageMatroid",
-	"fromSageMatroid"
+	"fromSageMatroid",
+	"writeToString",
+	"saveMatroid",
+	"readFromFile"
 }
 
 Matroid = new Type of HashTable
@@ -1162,6 +1165,35 @@ fromSageMatroid String := Matroid => s -> (
 	bases := demark("},", apply(drop(L, 1), t -> "{" | demark(",", drop(separate("", t), 1))));
 	value(replace("M", "m", s0) | "}, {" | bases | "}})")
 )
+
+-- Writing to file
+toExternalString Set := toString
+
+writeToString = method()
+writeToString Thing := String => T -> (
+    if not instance(T, HashTable) then return toExternalString T;
+    K := select(keys T, k -> instance(T#k, MutableHashTable));
+    "new " | toString class T | " from {\n" | demark(",\n", for k in keys T - set K list ( 
+        try (
+            toExternalString k | " => " | toExternalString T#k
+        ) else (
+            if debugLevel > 0 then << "Could not externalize key " << k << endl;
+            continue
+        )
+    )) | (if #K > 0 then ",\n" else "") | demark(",\n", for k in K list (
+        toExternalString k | " => " | writeToString T#k
+    )) | "\n}"
+)
+
+saveMatroid = method()
+saveMatroid (Matroid, String) := String => (M, file) -> (
+	s := replace("QQ\\[x_0\\.\\.x_" | toString(#M_* - 1) | "\\]", "matroidRing", writeToString M);
+	(openOut file) << "matroidRing = " << toExternalString ring ideal M << ";" << endl << s << close;
+	file
+)
+
+readFromFile = method()
+readFromFile String := Thing => fileName -> value get fileName
 
 -- Miscellaneous general purpose helper functions
 

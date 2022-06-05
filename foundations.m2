@@ -58,22 +58,24 @@ pasture (Matrix, Matrix, List) := Pasture => (A0, eps0, L) -> (
 )
 pasture (Module, Matrix, List) := Pasture => (M, eps, L) -> pasture(presentation M, eps, L)
 pasture GaloisField := Pasture => k -> (
-    q := k.order;
-    if q == 2 then return specificPasture "F2";
-    n := q-1;
-    g := matrix{{n}};
-    x := k.PrimitiveElement;
-    eps := if even q then 0 else n//2;
-    exps := toList(1..<n);
-    multToAdd := hashTable apply(exps, e -> x^e => e);
-    hexes := while #exps > 0 list (
-        a := exps#0;
-        b := multToAdd#(1 - x^a);
-        h := {{a,b}, {n-a,(eps-a+b)%n}, {n-b,(eps-b+a)%n}};
-        exps = exps - set flatten h;
-        h/(p -> p/(e -> matrix{{e}} % g))
-    );
-    pasture(g, matrix{{eps}}, hexes)
+    if k.?pasture then k.pasture else k.pasture = (
+        q := k.order;
+        if q == 2 then return specificPasture "F2";
+        n := q-1;
+        g := matrix{{n}};
+        x := k.PrimitiveElement;
+        eps := if even q then 0 else n//2;
+        exps := toList(1..<n);
+        multToAdd := hashTable apply(exps, e -> x^e => e);
+        hexes := while #exps > 0 list (
+            a := exps#0;
+            b := multToAdd#(1 - x^a);
+            h := {{a,b}, {n-a,(eps-a+b)%n}, {n-b,(eps-b+a)%n}};
+            exps = exps - set flatten h;
+            h/(p -> p/(e -> matrix{{e}} % g))
+        );
+        pasture(g, matrix{{eps}}, hexes)
+    )
 )
 pasture (Array, String) := Pasture => (varArray, s) -> ( -- s should be a comma-separated list of (Laurent) monomials or binomials in varArray, which all equal 1 in the pasture
     varList := delete(null, unique toList varArray);
@@ -188,6 +190,20 @@ pairTypes Pasture := HashTable => P -> (
         if r#2 > r#1 then n3 = n3 + 1 else if r#1 > r#0 then n1 = n1 + 1 else n2 = n2 + 1
     );
     hashTable {("type 1", n1), ("type 2", n2), ("type 3", n3), ("type 4", #flatten P.cache#"type4Data")}
+)
+
+savePasture = method()
+savePasture (Pasture, String) := String => (P, fileName) -> (openOut fileName) << writeToString P << close
+
+saveFoundation = method()
+saveFoundation (Matroid, String) := String => (M, fileName) -> savePasture(foundation M, fileName)
+saveFoundation Matroid := String => M -> saveFoundation(M, temporaryFileName())
+
+readFoundation = method()
+readFoundation (Matroid, String) := Foundation => (M, fileName) -> (
+    M.cache#"foundation" = value get fileName;
+    M.cache#"foundation".cache#"matroid" = M;
+    M.cache#"foundation"
 )
 
 ------------------------------------------
@@ -433,7 +449,7 @@ coordinatingPath Matroid := List => opts -> M -> (
         B := sort toList first bases M;
         D := sort toList (M.groundSet - B);
         S := toList(0..<rank M);
-        zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(S, i -> not member(B#i, C))));
+        zeroPos := apply(D, d -> (C := fundamentalCircuit(M, set B, d); select(S, i -> not member(B#i, C))));
         BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
         onePos := (edges kruskalSpanningForest BG)/toList/sort;
         M.cache#"coordinatingPathBasis" = apply(onePos, p -> (
@@ -583,28 +599,10 @@ foundation Matroid := Foundation => opts -> M -> (
         symbol multiplicativeGroup => coker g,
         symbol epsilon => eps,
         symbol hexagons => hexes,
-        cache => new CacheTable from (cacheList | {"numU24minors" => u, "strategy" => strat})
+        cache => new CacheTable from (cacheList | {"numU24minors" => u, "strategy" => strat, "matroid" => M})
     }
     )
 )
-
-saveFoundation = method()
-saveFoundation (Matroid, String) := String => (M, fileName) -> (
-    F := foundation M;
-    outputFile := openOut fileName;
-    outputFile << "new Foundation from {" << endl;
-    for k in delete(cache, keys F) do outputFile << toString k << " => " << toExternalString(F#k) << ", " << endl;
-    outputFile << "cache => new CacheTable from {" << endl;
-    k0 := if F.cache#?"genTableB" then "genTableB" else "genTableH";
-    for k in keys F.cache - set{k0} do outputFile << "\"" << k << "\" => " << toExternalString F.cache#k << ", " << endl;
-    outputFile << "\"" << k0 << "\" => " << toString F.cache#k0 << endl;
-    outputFile << "}" << endl << "}" << close;
-    fileName
-)
-saveFoundation Matroid := String => M -> saveFoundation(M, temporaryFileName())
-
-readFoundation = method()
-readFoundation (Matroid, String) := Foundation => (M, fileName) -> M.cache#"foundation" = value concatenate lines get fileName
 
 TEST /// -- rank 2 uniform matroids (k-regular partial fields)
 U = foundation uniformMatroid(2,4)
@@ -1169,7 +1167,7 @@ searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
     (r, n) := (rank M, #M.groundSet);
     B := sort toList first bases M;
     D := sort toList (M.groundSet - B);
-    zeroPos := apply(D, d -> (C = fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
+    zeroPos := apply(D, d -> (C := fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
     O := coordinatingPath M;
     Z := flatten apply(#D, j -> apply(zeroPos#j, i -> (i, D#j)));
     knownPos := O | Z | flatten apply(r, i -> apply(delete(i, toList(0..<r)), j -> (i, B#j)));
