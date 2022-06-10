@@ -1191,9 +1191,10 @@ saveMatroid (Matroid, String) := String => (M, file) -> (
 	(openOut file) << "matroidRing = " << toExternalString ring ideal M << ";" << endl << s << close;
 	file
 )
+saveMatroid Matroid := String => M -> saveMatroid(M, temporaryFileName())
 
 readFromFile = method()
-readFromFile String := Thing => fileName -> value get fileName
+readFromFile String := Thing => file -> value get file
 
 -- Miscellaneous general purpose helper functions
 

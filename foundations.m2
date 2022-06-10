@@ -194,14 +194,15 @@ pairTypes Pasture := HashTable => P -> (
 
 savePasture = method()
 savePasture (Pasture, String) := String => (P, fileName) -> (openOut fileName) << writeToString P << close
+savePasture Pasture := String => P -> savePasture(P, temporaryFileName())
 
 saveFoundation = method()
 saveFoundation (Matroid, String) := String => (M, fileName) -> savePasture(foundation M, fileName)
 saveFoundation Matroid := String => M -> saveFoundation(M, temporaryFileName())
 
 readFoundation = method()
-readFoundation (Matroid, String) := Foundation => (M, fileName) -> (
-    M.cache#"foundation" = value get fileName;
+readFoundation (Matroid, String) := Foundation => (M, file) -> (
+    M.cache#"foundation" = value get file;
     M.cache#"foundation".cache#"matroid" = M;
     M.cache#"foundation"
 )
@@ -847,15 +848,16 @@ fullRankSublattice Pasture := List => P -> (
 
 morphisms = method(Options => {FindOne => false, FindIso => false}) -- Assumes fundamental elements of P1 generate P1.multiplicativeGroup
 morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
+    (findIso, findOne) := (opts.FindIso, opts.FindOne);
+    -- if findIso then findOne = true;
+    if findOne and P1 == P2 then return {pastureMorphism(P1, P2, id_(P1.multiplicativeGroup))};
     P1star := presentation P1.multiplicativeGroup;
     P2star := presentation P2.multiplicativeGroup;
     fundPairsP2 := unique flatten P2.hexagons;
     fundEltsP2 := unique flatten fundPairsP2;
-    if opts.FindIso then (
-        if not(#P1.hexagons == #P2.hexagons and #unique flatten flatten P1.hexagons == #fundEltsP2 and P1star == P2star) then (
-            if debugLevel > 0 then print "morphisms: Pastures have different numerical data!";
-            return {};
-        ) else if P1 == P2 then return {pastureMorphism(P1, P2, id_(P1.multiplicativeGroup))};
+    if findIso and not(#P1.hexagons == #P2.hexagons and #unique flatten flatten P1.hexagons == #fundEltsP2 and P1star == P2star) then (
+        if debugLevel > 0 then print "morphisms: Pastures have different numerical data!";
+        return {}
     );
     fundPairsP2unordered := unique(fundPairsP2 | fundPairsP2/reverse);
     fundPairsP2set := set(fundPairsP2/set);
@@ -919,9 +921,7 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                     if (abs(alpha), beta) == (1,0) then fundEltPartners(P2, alpha*w % P2star)
                     else unique flatten apply(fundPairsP2unordered, pair -> if (alpha*pair#0 + beta*pair#1) % P2star === w then {pair#1} else {})
                 );
-                if opts.FindIso then (
-                    newCandidates = select(newCandidates, c -> rank(C0 | c) == 1 + numcols C0);
-                );
+                if findIso then newCandidates = select(newCandidates, c -> rank(C0 | c) == 1 + numcols C0);
                 if debugLevel > 1 then << endl << "morphisms: New candidates @ level " << level << ": " << newCandidates << endl;
                 newCandidates = select(newCandidates, c -> (
                     all(#type4Data#(level+1), i -> (
@@ -947,16 +947,16 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                 if torsECands === false then continue;
                 for psi in torsECands list (
                     M := phi | (psi || freeE);
-                    if opts.FindIso and abs det M != 1 then continue;
+                    if findIso and abs det M != 1 then continue;
                     if not all(otherPairs, p -> member(set{M*p#0 % P2star, M*p#1 % P2star}, fundPairsP2set)) then continue;
-                    if opts.FindOne or opts.FindIso then return {pastureMorphism(P1, P2, M)} else M
+                    if findOne then return {pastureMorphism(P1, P2, M)} else M
                 )
             )
         )
     ))
 )
 
-areIsomorphic (Pasture, Pasture) := Boolean => (P, P') -> #morphisms(P, P', FindIso => true) > 0
+areIsomorphic (Pasture, Pasture) := Boolean => (P, P') -> #morphisms(P, P', FindOne => true, FindIso => true) > 0
 
 isoTypes = method()
 isoTypes List := List => L -> (
@@ -1041,7 +1041,7 @@ elapsedTime foundation(M, Strategy => "hyperplanes")
 areIsomorphic(foundation M, specificPasture krasner)
 ///
 
-TEST /// -- Pasture which is not a foundation
+TEST /// -- Pastures which are not foundations
 P = pasture GF 4 * pasture GF 5
 G = pasture([t], "t + t^2")
 assert Equation(0, #morphisms(P, G))
@@ -1114,14 +1114,36 @@ assert Equation(8, #morphisms(P2, P3))
 TEST /// -- foundations with same additive group and numbers of hexagons, but different numbers of fundamental elements
 M1 = (allMatroids(8,4))#204
 M2 = (allMatroids(8,4))#223
-assert((foundation M1).multiplicativeGroup == (foundation M2).multiplicativeGroup)
-assert(#(foundation M1).hexagons == #(foundation M2).hexagons)
-assert(#unique flatten flatten(foundation M1).hexagons == 54)
-assert(#unique flatten flatten(foundation M2).hexagons == 60)
-assert not areIsomorphic(foundation M1, foundation M2)
-mor12 = morphisms(foundation M1, foundation M2)
+(F1, F2) = (M1, M2)/foundation
+assert(F1.multiplicativeGroup == F2.multiplicativeGroup)
+assert(#F1.hexagons == #F2.hexagons)
+assert(#unique flatten flatten F1.hexagons == 54)
+assert(#unique flatten flatten F2.hexagons == 60)
+assert not areIsomorphic(F1, F2)
+mor12 = morphisms(F1, F2)
 assert(#mor12 == 4 and all(mor12, phi -> det phi == 0))
-assert(#morphisms(foundation M2, foundation M1) == 0)
+assert(#morphisms(F2, F1) == 0)
+///
+
+TEST /// -- number of type 3 pairs changes when reordering fundamental pairs
+M = (allMatroids(8,4))#109
+perm = {27,25,31,17,30,24,4,11,8,29,18,19,9,2,0,16,13,26,28,5,10,21,20,3,15,7,6,14,12,1,22,23}
+F = foundation M
+P = pasture(F.multiplicativeGroup, F.epsilon, (F.hexagons)_perm)
+assert Equation(P, F)
+assert(pairTypes F === hashTable {"type 1" => 7, "type 2" => 0, "type 3" => 3, "type 4" => 22})
+assert(pairTypes P === hashTable {"type 1" => 5, "type 2" => 0, "type 3" => 4, "type 4" => 23})
+///
+
+TEST /// -- |Aut(M)| > |Aut(F_M)|, |End(F_M)| > |Aut(F_M)|
+U24 = uniformMatroid_2 4
+M = U24 ++ U24
+assert Equation(1152, #getIsos(M, M))
+U = foundation U24
+F = foundation M
+assert areIsomorphic(F, U ** U)
+assert Equation(144, #morphisms(F, F))
+assert Equation(72, #morphisms(F, F, FindIso => true))
 ///
 
 ------------------------------------------
@@ -1207,9 +1229,8 @@ rescalingRepresentative (Matrix, List) := Matrix => (A, O) -> (
         ))
     )))/transpose};
     if debugLevel > 0 then << "rescalingRepresentative: " << C << endl;
-    -- D := diagonalMatrix(E_{0} // (E^{0} || C));
     K := gens ker C;
-    D := diagonalMatrix flatten entries sum(numcols K, i -> randomNonzero k * K_{i});
+    D := diagonalMatrix flatten entries sum(numcols K, i -> randomNonzero k * K_{i}); -- attempts to get element of K with all nonzero entries
     A = D*A;
     A*inverse diagonalMatrix apply(numcols A, j -> if colHash#?j then A_(if instance(colHash#j, ZZ) then colHash#j else colHash#j#0, j) else if member(j, B) then A_(position(B, p -> j == p), j) else 1_k)
 )
@@ -1608,14 +1629,12 @@ set includedIndices
 
 -- TODO:
 -- Q: when checking otherPairs, enough to consider torsion?
--- compute limits/colimits of pastures
--- determining if a pasture is a tensor product of specified pastures
--- compute symmetry quotients?
--- Natural map between different presentations of foundation
--- Finish single element extensions via linear subclasses
--- Create example where number of type 3 pairs changes when reordering fundamental pairs
+-- implement limits/colimits of pastures
+-- determine if a pasture is a tensor product of specified pastures
+-- compute symmetry quotients? Q: When is natural map Aut(M) -> Aut(F_M) surjective?
+-- map from hyperplane presentation of foundation to basis presentation?
+-- finish single element extensions via linear subclasses
 
 restart
 load "foundations.m2"
 debugLevel = 1
-
