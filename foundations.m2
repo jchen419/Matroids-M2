@@ -477,6 +477,16 @@ foundation Matroid := Foundation => opts -> M -> (
         indexOfHyp := h -> hypMap#h;
         corank2flats := select(flats(M, 2, "corank"), F -> rank_M F == r - 2);
         corank3flats := select(flats(M, 3, "corank"), F -> rank_M F == r - 3);
+	-- IS := independentSets(M, r-3);
+	-- corank23flats := (if #IS == 0 then flats(M, 3, "corank") else select(flats(M, 3, "corank"), F -> any(IS, s -> isSubset(s, F)))) - set hyperplanes M;
+	-- H23 := new MutableHashTable from apply(corank23flats, F -> (F,0));
+	-- H3 := new MutableHashTable from {};
+	-- scan(keys H23, F -> (
+	--     pos := position(keys H23, k -> isSubset(F,k) and F =!= k);
+	--     if pos =!= null then ( H3#F = 1; remove(H23, F); );
+	-- ));
+	-- corank3flats := keys H3;
+	-- corank2flats := corank23flats - set corank3flats;
         if dbg > 0 then << "foundation: Finding upper U(2,4) minors..." << flush;
         U24minors := flatten apply(corank2flats, F -> subsets(select(hyperplanes M, H -> isSubset(F, H)), 4));
         if dbg > 0 then << #U24minors << " found." << endl;
@@ -1395,8 +1405,40 @@ fundamentalDiagram Matroid := Sequence => M -> (
     (numMinors, V, E)
 )
 
+fundamentalDiagram3Connected = method()
+fundamentalDiagram3Connected Matroid := Sequence => M -> (
+    if not is3Connected M then error "fundamentalDiagram3Connected: expected 3-connected matroid";
+    minorList := {uniformMatroid_2 4, uniformMatroid_2 5, uniformMatroid_3 5, whirl 3};
+    U24minors := allMinors(M, minorList#0);
+    otherMinors := apply(toList(1..3), i -> allMinors(M, minorList#i));
+    numMinors := prepend(#U24minors, apply(otherMinors, s -> #s));
+    -- otherMinors = flatten otherMinors;
+    N := sum numMinors;
+    E := flatten apply(numMinors#1, i -> (p := otherMinors#0#i; apply(toList(M.groundSet - (p#0+p#1)), e -> {position(U24minors, u -> u === {p#0, p#1+set{e}}), i + numMinors#0})));
+    E = E | flatten apply(numMinors#2, i -> (p := otherMinors#1#i; apply(toList(M.groundSet - (p#0+p#1)), e -> {position(U24minors, u -> u === {p#0+set{e}, p#1}), i + numMinors#0 + numMinors#1})));
+    E = E | flatten flatten apply(numMinors#3, i -> (
+    	p := otherMinors#2#i;
+	U24pos := positions(U24minors, u -> #(u#0-p#0) == 1 and #(u#1-p#1) == 1);
+	apply(6, j -> {{N - last numMinors + i, N + 6*i + j}, {U24pos#j, N + 6*i + j}})
+    ));
+    (numMinors, toList(0..(N + 6*(last numMinors) - 1)), E)
+)
+
 HashTable _ List := (H, L) -> flatten apply(L, v -> H#v)
 
+maxVradius = method()
+maxVradius Matroid := ZZ => M -> (
+    (S,V,E) := fundamentalDiagram3Connected M;
+    H := hashTable((a,b) -> flatten {a,b}, E | E/reverse);
+    L0 := apply(S#1, i -> i + S#0) | apply(S#2, i -> i + S#0+S#1);
+    (n, r) := (#L0,0);
+    L := unique(L0 | H_L0);
+    print (L,L0);
+    if #L =!= #L0 then r = 1;
+    while n < #L and not isSubset(V, L) do ( (n, r) = (#L, r+1); L = unique(L | H_L); );
+    (r, isSubset(V, L))
+)
+    
 coveringNumber = method()
 coveringNumber (Matroid, ZZ) := Sequence => (M, opt) -> (
     (S, V, E) := fundamentalDiagram M;
