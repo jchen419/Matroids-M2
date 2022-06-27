@@ -164,6 +164,12 @@ fundEltPartners (Pasture, Thing) := List => (P, e) -> (
     if P.cache#"partnerTable"#?e then P.cache#"partnerTable"#e else {}
 )
 
+isSlim = method()
+isSlim Pasture := Boolean => P -> (
+    if not P.cache#?"partnerTable" then fundEltPartners(P, null);
+    unique apply(values P.cache#"partnerTable", v -> #v) === {1}
+)
+
 freePartPasture = method()
 freePartPasture Pasture := List => P -> (
     A := presentation P.multiplicativeGroup;
@@ -897,7 +903,7 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     Q := P1.cache#"quotientLattice";
     rho := P1.cache#"quotientPruningMap";
     K := apply(abelianGroupHom(Q, T2), f -> f * rho);
-    T0P2 := if T2 == 0 then K else null;
+    T0P2 := if T2 == 0 or Q == 0 then K else null;
     if debugLevel > 0 then print("morphisms: (#phi, psi): " | net(#H, K));
     if debugLevel > 0 then print("morphisms: Quotient lattice is: "| net Q);
     z0 := map(ZZ^n2, ZZ^0, 0);
@@ -1156,6 +1162,14 @@ assert Equation(144, #morphisms(F, F))
 assert Equation(72, #morphisms(F, F, FindIso => true))
 ///
 
+TEST /// -- |Aut(V)| < |Aut(F_V)|
+V8 = specificMatroid "vamos"
+F = foundation V8
+assert Equation(64, #getIsos(V8, V8))
+elapsedTime mor = morphisms(F, F, FindIso => true); -- ~ 240 seconds
+assert(tally(mor/det) === new Tally from {-1 => 192, 1 => 192})
+///
+
 ------------------------------------------
 -- Representations via pasture morphisms
 ------------------------------------------
@@ -1194,7 +1208,7 @@ representations (Matroid, GaloisField) := List => opts -> (M, k) -> (
 randomNonzero = method()
 randomNonzero Ring := RingElement => k -> ( a := random k; while a == 0 do a = random k; a )
 
-searchRepresentation = method(Options => {symbol Attempts => 10000})
+searchRepresentation = method(Options => {symbol Attempts => 1000})
 searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
     (r, n) := (rank M, #M.groundSet);
     B := sort toList first bases M;
@@ -1220,7 +1234,13 @@ searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
             if areIsomorphic(M, N) then break true;
         );
     );
-    if foundRep === null then ( print " Could not find representation - please try again"; return; );
+    if foundRep === null then (
+        msg := if total === (k.order - 1)^(#unknowns) then (
+            (if total == 1 then "" else "likely ") | "no representation exists"
+        ) else "please try again";
+        print("Could not find representation - " | msg);
+        return;
+    );
     A = matrix A_((sort pairs isomorphism(M, N))/last); -- makes matroid A == M
     rescalingRepresentative(A, O)
 )
@@ -1238,7 +1258,7 @@ rescalingRepresentative (Matrix, List) := Matrix => (A, O) -> (
             A_((colHash#c)#0,c)*E^{(colHash#c)#0} - A_(row,c)*E^{row}
         ))
     )))/transpose};
-    if debugLevel > 0 then << "rescalingRepresentative: " << C << endl;
+    if debugLevel > 1 then << "rescalingRepresentative: " << C << endl;
     K := gens ker C;
     D := diagonalMatrix flatten entries sum(numcols K, i -> randomNonzero k * K_{i}); -- attempts to get element of K with all nonzero entries
     A = D*A;
@@ -1676,6 +1696,7 @@ set includedIndices
 -- compute symmetry quotients? Q: When is natural map Aut(M) -> Aut(F_M) surjective?
 -- map from hyperplane presentation of foundation to basis presentation?
 -- finish single element extensions via linear subclasses
+-- Q: prefer type 1/2 pairs with coefficients of 1 when building fullRankSublattice? (Not entirely clear if this will actually lead to an improvement.)
 
 restart
 load "foundations.m2"
