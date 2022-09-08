@@ -222,13 +222,45 @@ myMinPres Matrix := Sequence => A -> (
     recursionLimitStore := recursionLimit;
     recursionLimit = max(2*numcols A, recursionLimit);
     -- customized code from minimalPresentation(Module, Strategy => 2)
-    (g,ch) := smithNormalForm(A, ChangeMatrix => {true, false});
+    (g,ch) := smithNormalForm(A, ChangeMatrix => {true, false}, KeepZeroes => true);
     recursionLimit = recursionLimitStore;
-    piv := select(pivots g,ij -> abs g_ij === 1);
+    (D,S,T) = snf g;
+    (g,ch) = (D, ch*S);
+    piv := select(pivots g, ij -> abs g_ij === 1);
     (rows, cols) := (piv/first, piv/last);
     (submatrix'(g,rows,cols),submatrix'(ch,rows,))
 )
 myMinPres Module := Sequence => M -> myMinPres presentation M
+
+snf = method()
+snf Matrix := Matrix => X -> ( -- X should be diagonal over ZZ
+    X0 := mutableMatrix X;
+    (rows, cols) := (numrows X, numcols X);
+    n := min(rows, cols);
+    SNFIterate := (A,S,T) -> ( -- A is mutable
+        for i to n - 2 do (
+            (a,b) := (A_(i,i), A_(i+1,i+1));
+            c := gcd(a,b);
+            if a*b === 0 or a === c then continue;
+            A_(i,i) = c;
+            A_(i+1,i+1) = a*(b//c);
+            (sigma, tau) := toSequence flatten entries(c // matrix{{a,b}});
+            rho := (b//c)*tau;
+            P := diagonalMatrix toList(i:1);
+            S = S*(P ++ matrix{{1-rho, -1},{rho, 1}} ++ diagonalMatrix toList(rows-i-2:1));
+            T = (P ++ matrix{{a//c, b//c},{-tau, sigma}} ++ diagonalMatrix toList(cols-i-2:1))*T;
+        );
+        (A, S, T)
+    );
+    output := ultimate(SNFIterate, (X0, id_(ZZ^rows), id_(ZZ^cols)));
+    (matrix output#0, output#1, output#2)
+)
+
+TEST ///
+A = diagonalMatrix {4,6,15} ++ map(ZZ^3,ZZ^5,0) -- -> {2,12,15} -> {2,3,60} -> {1,6,60}
+(D, S, T) = snf A
+assert(A == S*D*T)
+///
 
 liftTorsion = method()
 liftTorsion (Matrix, Matrix, Module, List) := Matrix => (A, B, G, K) -> ( 
@@ -1149,6 +1181,13 @@ P = pasture(F.multiplicativeGroup, F.epsilon, (F.hexagons)_perm)
 assert Equation(P, F)
 assert(pairTypes F === hashTable {"type 1" => 7, "type 2" => 0, "type 3" => 3, "type 4" => 22})
 assert(pairTypes P === hashTable {"type 1" => 5, "type 2" => 0, "type 3" => 4, "type 4" => 23})
+-- Number of type 3 pairs can even change by more than 1
+M = (allMatroids(8,4))#831
+M1 = matroid(8, subsets(M.groundSet , rank M) - set bases M)
+N = (allMatroids(8,4))#322
+assert isWellDefined M1 and areIsomorphic(M1, N)
+assert(pairTypes foundation M1 === hashTable from {"type 1" => 21, "type 2" => 0, "type 3" => 9, "type 4" => 180})
+assert(pairTypes foundation N === hashTable from {"type 1" => 25, "type 2" => 0, "type 3" => 7, "type 4" => 178})
 ///
 
 TEST /// -- |Aut(M)| > |Aut(F_M)|, |End(F_M)| > |Aut(F_M)|
