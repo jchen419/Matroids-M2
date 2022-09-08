@@ -137,6 +137,7 @@ matroid (List, List) := Matroid => opts -> (E, L) -> (
 	M
 )
 matroid List := Matroid => opts -> L -> matroid(sort unique flatten L, L, opts)
+matroid (ZZ, List) := Matroid => opts -> (n, L) -> matroid(toList(0..<n), L, opts)
 matroid Matrix := Matroid => opts -> A -> (
 	k := rank A;
 	setRepresentation(matroid(apply(numcols A, i -> A_{i}), (select(subsets(numcols A, k), S -> rank A_S == k))/set), A)
