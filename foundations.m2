@@ -225,7 +225,7 @@ myMinPres Matrix := Sequence => A -> (
     (g,ch) := smithNormalForm(A, ChangeMatrix => {true, false}, KeepZeroes => true);
     recursionLimit = recursionLimitStore;
     (D,S,T) = snf g;
-    (g,ch) = (D, ch*S);
+    (g,ch) = (D, S*ch);
     piv := select(pivots g, ij -> abs g_ij === 1);
     (rows, cols) := (piv/first, piv/last);
     (submatrix'(g,rows,cols),submatrix'(ch,rows,))
@@ -253,13 +253,13 @@ snf Matrix := Matrix => X -> ( -- X should be diagonal over ZZ
         (A, S, T)
     );
     output := ultimate(SNFIterate, (X0, id_(ZZ^rows), id_(ZZ^cols)));
-    (matrix output#0, output#1, output#2)
+    (matrix output#0, inverse output#1, inverse output#2)
 )
 
 TEST ///
 A = diagonalMatrix {4,6,15} ++ map(ZZ^3,ZZ^5,0) -- -> {2,12,15} -> {2,3,60} -> {1,6,60}
 (D, S, T) = snf A
-assert(A == S*D*T)
+assert(D == S*A*T)
 ///
 
 liftTorsion = method()
