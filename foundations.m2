@@ -264,7 +264,7 @@ assert(D == S*A*T)
 
 liftTorsion = method()
 liftTorsion (Matrix, Matrix, Module, List) := Matrix => (A, B, G, K) -> ( 
-    -- finds all solutions of AX = B over a finite abelian group G, given all solutions K to AX = 0
+    -- finds all solutions of X*A = B over a finite abelian group G, given all solutions K to X*A = 0
     -- assumes G is given by a minimal presentation (i.e. coker of diagonal matrix with nonzero diagonal entries)
     -- numrows B should == numgens G
     torsCand := matrix for i to (numcols mingens G) - 1 list (
@@ -896,14 +896,12 @@ fullRankSublattice Pasture := List => P -> (
 
 morphisms = method(Options => {FindOne => false, FindIso => false}) -- Assumes fundamental elements of P1 generate P1.multiplicativeGroup
 morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
-    (findIso, findOne) := (opts.FindIso, opts.FindOne);
-    -- if findIso then findOne = true;
-    if findOne and P1 == P2 then return {pastureMorphism(P1, P2, id_(P1.multiplicativeGroup))};
+    if opts.FindOne and P1 == P2 then return {pastureMorphism(P1, P2, id_(P1.multiplicativeGroup))};
     P1star := presentation P1.multiplicativeGroup;
     P2star := presentation P2.multiplicativeGroup;
     fundPairsP2 := unique flatten P2.hexagons;
     fundEltsP2 := unique flatten fundPairsP2;
-    if findIso and not(#P1.hexagons == #P2.hexagons and #unique flatten flatten P1.hexagons == #fundEltsP2 and P1star == P2star) then (
+    if opts.FindIso and not(#P1.hexagons == #P2.hexagons and #unique flatten flatten P1.hexagons == #fundEltsP2 and P1star == P2star) then (
         if debugLevel > 0 then print "morphisms: Pastures have different numerical data!";
         return {}
     );
@@ -935,7 +933,7 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     Q := P1.cache#"quotientLattice";
     rho := P1.cache#"quotientPruningMap";
     K := apply(abelianGroupHom(Q, T2), f -> f * rho);
-    T0P2 := if T2 == 0 or Q == 0 then K else null;
+    T0P2 := if T2 == 0 then K else null;
     if debugLevel > 0 then print("morphisms: (#phi, psi): " | net(#H, K));
     if debugLevel > 0 then print("morphisms: Quotient lattice is: "| net Q);
     z0 := map(ZZ^n2, ZZ^0, 0);
@@ -969,7 +967,7 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                     if (abs(alpha), beta) == (1,0) then fundEltPartners(P2, alpha*w % P2star)
                     else unique flatten apply(fundPairsP2unordered, pair -> if (alpha*pair#0 + beta*pair#1) % P2star === w then {pair#1} else {})
                 );
-                if findIso then newCandidates = select(newCandidates, c -> rank(C0 | c) == 1 + numcols C0);
+                if opts.FindIso then newCandidates = select(newCandidates, c -> rank(C0 | c) == 1 + numcols C0);
                 if debugLevel > 1 then << endl << "morphisms: New candidates @ level " << level << ": " << newCandidates << endl;
                 newCandidates = select(newCandidates, c -> (
                     all(#type4Data#(level+1), i -> (
@@ -995,9 +993,9 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
                 if torsECands === false then continue;
                 for psi in torsECands list (
                     M := phi | (psi || freeE);
-                    if findIso and abs det M != 1 then continue;
+                    if opts.FindIso and abs det M != 1 then continue;
                     if not all(otherPairs, p -> member(set{M*p#0 % P2star, M*p#1 % P2star}, fundPairsP2set)) then continue;
-                    if findOne then return {pastureMorphism(P1, P2, M)} else M
+                    if opts.FindOne then return {pastureMorphism(P1, P2, M)} else M
                 )
             )
         )
@@ -1015,7 +1013,7 @@ isoTypes List := List => L -> (
         isNewIsoClass := for c in isoClasses do if areIsomorphic(c, P) then break false;
         if isNewIsoClass =!= false then (
             isoClasses = append(isoClasses, P);
-            if dbg > 0 then << "isoTypes: found new iso class, total is " << #isoClasses << endl;
+            if dbg > 0 then << "\risoTypes: found new iso class, total is " << #isoClasses << flush;
         );
     );
     debugLevel = dbg;
@@ -1155,6 +1153,7 @@ TEST /// -- lifting torsion in morphisms
 P1 = pasture([x,y], "x+y, x^3*y^5 + x^2*y^6")
 P2 = pasture([w,z], "w^3*z^5 + w^2*z^6, w+z")
 P3 = pasture([x], "-x^3,x+x^(-1),x^2+x^4")
+assert areIsomorphic(P1, P2)
 assert Equation(8, #morphisms(P1, P3))
 assert Equation(8, #morphisms(P2, P3))
 ///
@@ -1183,11 +1182,11 @@ assert(pairTypes F === hashTable {"type 1" => 7, "type 2" => 0, "type 3" => 3, "
 assert(pairTypes P === hashTable {"type 1" => 5, "type 2" => 0, "type 3" => 4, "type 4" => 23})
 -- Number of type 3 pairs can even change by more than 1
 M = (allMatroids(8,4))#831
-M1 = matroid(8, subsets(M.groundSet , rank M) - set bases M)
+M1 = matroid(8, subsets(M.groundSet, rank M) - set bases M)
 N = (allMatroids(8,4))#322
-assert isWellDefined M1 and areIsomorphic(M1, N)
-assert(pairTypes foundation M1 === hashTable from {"type 1" => 21, "type 2" => 0, "type 3" => 9, "type 4" => 180})
-assert(pairTypes foundation N === hashTable from {"type 1" => 25, "type 2" => 0, "type 3" => 7, "type 4" => 178})
+assert(isWellDefined M1 and areIsomorphic(M1, N))
+assert(pairTypes foundation M1 === hashTable {"type 1" => 21, "type 2" => 0, "type 3" => 9, "type 4" => 180})
+assert(pairTypes foundation N === hashTable {"type 1" => 25, "type 2" => 0, "type 3" => 7, "type 4" => 178})
 ///
 
 TEST /// -- |Aut(M)| > |Aut(F_M)|, |End(F_M)| > |Aut(F_M)|
@@ -1205,8 +1204,8 @@ TEST /// -- |Aut(V)| < |Aut(F_V)|
 V8 = specificMatroid "vamos"
 F = foundation V8
 assert Equation(64, #getIsos(V8, V8))
-elapsedTime mor = morphisms(F, F, FindIso => true); -- ~ 240 seconds
-assert(tally(mor/det) === new Tally from {-1 => 192, 1 => 192})
+elapsedTime mor = morphisms(F, F, FindIso => true); -- ~ 270 seconds
+assert(tally(mor/det) === new Tally from {-1 => 384, 1 => 384})
 ///
 
 ------------------------------------------
@@ -1215,7 +1214,7 @@ assert(tally(mor/det) === new Tally from {-1 => 192, 1 => 192})
 
 getRepresentation (Matroid, PastureMorphism) := Matrix => (M, phi) -> (
     F := foundation(M, Strategy => "bases");
-    if source phi =!= F then error "representation: Expected source of phi to equal the foundation of M";
+    if source phi =!= F then error "getRepresentation: Expected source of phi to equal the foundation of M";
     B := sort toList first bases M;
     (ch, basesMap) := (F.cache#"pruningMapB", F.cache#"genTableB");
     allBases := set bases M;
@@ -1265,7 +1264,7 @@ searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
     maxAttempts := min(opts.Attempts, (k.order - 1)^(#unknowns));
     foundRep := while total < maxAttempts do (
         total = total + 1;
-        if debugLevel > 0 then << "\rTesting candidate " << viable << "/" << total << " ... " << flush;
+        if debugLevel > 0 then << "\rsearchRepresentation: Testing candidate " << viable << "/" << total << " ... " << flush;
         scan(unknowns, u -> A_u = randomNonzero k );
         N := matroid matrix A;
         if #bases N === #bases M then (
@@ -1277,7 +1276,7 @@ searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
         msg := if total === (k.order - 1)^(#unknowns) then (
             (if total == 1 then "" else "likely ") | "no representation exists"
         ) else "please try again";
-        print("Could not find representation - " | msg);
+        print("searchRepresentation: Could not find representation - " | msg);
         return;
     );
     A = matrix A_((sort pairs isomorphism(M, N))/last); -- makes matroid A == M
