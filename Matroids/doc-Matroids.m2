@@ -134,6 +134,7 @@ doc ///
 		(matroid, Graph)
 		(matroid, Ideal)
 		(matroid, List, MonomialIdeal)
+		(matroid, ZZ, List)
 		Loops
 		[matroid, Loops]
 		ParallelEdges
@@ -150,6 +151,8 @@ doc ///
 	Inputs
 		E:List
 			a ground set
+		n:ZZ
+			the size of the ground set
 		B:List
 			a list of bases
 		C:List
@@ -192,6 +195,10 @@ doc ///
 		Example
 			M = matroid {{a,b},{a,c}}
 			peek M
+		Text
+		
+			If an integer n is provided, the ground set is taken to be {0, ..., n-1}.
+			
 		Text
 
 			If a matrix is provided, then the realizable matroid on the 
@@ -870,6 +877,8 @@ doc ///
 	Key
 		(independentSets, Matroid, ZZ)
 		(independentSets, Matroid)
+		(independentSets, Matroid, Set)
+		(independentSets, Matroid, List)
 	Headline
 		independent subsets of a matroid
 	Usage
@@ -1995,6 +2004,160 @@ doc ///
 		(isConnected, Matroid)
 ///
 
+
+doc ///
+	Key
+		isNonCrossing
+		(isNonCrossing, Set, Set)
+		(isNonCrossing, List, List)
+	Headline
+		whether 2 subsets are non-crossing
+	Usage
+		isNonCrossing(A, B)
+	Inputs
+		A:List
+		B:List
+	Outputs
+		:Boolean
+			whether A and B are non-crossing subsets of [n]
+	Description
+		Text
+			This function determines whether two disjoint subsets 
+			of [n] are non-crossing.
+			
+		Example
+			isNonCrossing({0,1,7},{2,4,5})
+			isNonCrossing({2,3,6},{1,4})
+	SeeAlso
+		isPositivelyOriented
+///
+
+doc ///
+	Key
+		positiveOrientation
+		(positiveOrientation, Matroid)
+	Headline
+		a positive orientation of a matroid
+	Usage
+		positiveOrientation M
+	Inputs
+		M:Matroid
+	Outputs
+		:List
+			a positive orientation of M
+	Description
+		Text
+			This function computes a 
+			@TO2{relabel, "relabelling"}@
+			of the ground set of a matroid for which it is positively
+			oriented, if one exists.
+			In other words, the output of this function is @TO null@ iff
+			the output of @TO isPositivelyOrientable@ is false.
+			
+		Example
+			M = matroid({{0,1},{2,3},{4,5}}, EntryMode => "circuits")
+			isPositivelyOriented M
+			p = positiveOrientation M
+			N = relabel(M, p)
+			isPositivelyOriented N
+	SeeAlso
+		isPositivelyOriented
+		isPositivelyOrientable
+///
+
+doc ///
+	Key
+		isPositivelyOriented
+		(isPositivelyOriented, Matroid)
+	Headline
+		whether a matroid is positively oriented
+	Usage
+		isPositivelyOriented M
+	Inputs
+		M:Matroid
+	Outputs
+		:Boolean
+			whether M is positively oriented
+	Description
+		Text
+			This function determines whether a matroid is positively
+			oriented, using a theorem of da Silva (which checks whether
+			any disjoint @TO2{circuits, "circuit"}@-cocircuit pair is 
+			@TO2{isNonCrossing, "non-crossing"}@).
+			
+		Example
+			M = matroid({{0,1},{2,3},{4,5}}, EntryMode => "circuits")
+			isPositivelyOriented M
+	SeeAlso
+		isPositivelyOrientable
+		positiveOrientation
+///
+
+doc ///
+	Key
+		isPositivelyOrientable
+		(isPositivelyOrientable, Matroid)
+	Headline
+		whether a matroid is positively orientable
+	Usage
+		isPositivelyOrientable M
+	Inputs
+		M:Matroid
+	Outputs
+		:Boolean
+			whether M is positively orientable
+	Description
+		Text
+			This function determines whether a matroid is positively
+			orientable, i.e. has a @TO2{relabel, "relabelling"}@ for which 
+			it is @TO2{isPositivelyOriented, "positively oriented"}@.
+			
+		Example
+			M = matroid({{0,1},{2,3},{4,5}}, EntryMode => "circuits")
+			isPositivelyOrientable M
+	SeeAlso
+		isPositivelyOriented
+		positiveOrientation
+///
+
+doc ///
+	Key
+		searchRepresentation
+		(searchRepresentation, Matroid, GaloisField)
+		Attempts
+		[searchRepresentation, Attempts]
+	Headline
+		search for a representation of a matroid over a finite field
+	Usage
+		searchRepresentation(M, k)
+	Inputs
+		M:Matroid
+		k:GaloisField
+	Outputs
+		:Matrix
+			a purported representation of M
+	Description
+		Text
+			This function performs a brute-force search for a
+			representation of a matroid, over a given finite field
+			(essentially repeatedly testing random candidates until 
+			one is found).
+			
+			The maximum number of attempts is specified by the optional
+			argument Attempts (default 1000). 
+			
+			Over GF(2), this function is guaranteed to (quickly) find a 
+			representation, if one exists. (Over larger finite fields,
+			there is no such guarantee.)
+			
+		Example
+			searchRepresentation(uniformMatroid(2, 4), GF 2)
+			searchRepresentation(matroid completeGraph 5, GF 3, Attempts => 2000)
+	SeeAlso
+		setRepresentation
+		getRepresentation
+///
+
 doc ///
 	Key
 		getRepresentation
@@ -2703,6 +2866,14 @@ doc ///
 	Key
 		idealChowRing
 		(idealChowRing, Matroid)
+		FlatOrder
+		ChowRingOptions
+		Presentation
+		[idealChowRing, FlatOrder]
+		[idealChowRing, ChowRingOptions]
+		[idealChowRing, Presentation]
+		[idealChowRing, CoefficientRing]
+		[idealChowRing, Variable]
 	Headline
 		the defining ideal of the Chow ring
 	Usage
@@ -3370,8 +3541,88 @@ doc ///
 ///
 
 
+doc ///
+	Key
+		saveMatroid
+		(saveMatroid, Matroid)
+		(saveMatroid, Matroid, String)
+		readFromFile
+		(readFromFile, String)
+	Headline
+		save matroid to file
+	Usage
+		saveMatroid M
+		saveMatroid(M, s)
+	Inputs
+		M:Matroid
+		s:String
+			the desired filename
+	Outputs
+		:String
+			the output filename
+	Description
+		Text
+			This method stores a matroid in string format in an output file,
+			including much of the auxiliary data used in computations in 
+			this package (such as circuits, flats, representations, etc.)
+
+			The name of the output file can be specified. If no output file 
+			is specified, then a random filename is chosen (using 
+			@TO temporaryFileName@ - note that in this case, such files are 
+			automatically deleted when the M2 session ends, so make sure 
+			to copy the temporary file before exiting M2).
+			
+			The saved matroid can be read back into a later M2 session using
+			the function readFromFile, which takes a filename (as a 
+			@TO String@) and returns the @TO value@ of the contents, as
+			interpreted by M2.
+			
+		CannedExample
+			i2 : V = specificMatroid "vamos"
+
+			o2 = a "matroid" of rank 4 on 8 elements
+			
+			o2 : Matroid
+			
+			i3 : betti ideal V
+			
+				    0  1
+			o3 = total: 1 41
+				 0: 1  .
+				 1: .  .
+				 2: .  .
+				 3: .  5
+				 4: . 36
+			
+			o3 : BettiTally
+			
+			i4 : saveMatroid(V, "vamos.txt")
+			
+			o4 = vamos.txt
+			
+			i5 : clearAll()
+			
+			i6 : V = readFromFile "vamos.txt"
+			
+			o6 = a "matroid" of rank 4 on 8 elements
+			
+			o6 : Matroid
+			
+			i7 : keys V.cache
+			
+			o7 = {groundSet, ideal}
+			
+			o7 : List
+///
+
+
+
+
 document {
-    	Key => {CheckWellDefined},
+    	Key => {
+			CheckWellDefined,
+			[relaxation, CheckWellDefined]
+		},
 	
 	Headline => "an optional argument",
 	
@@ -4135,6 +4386,12 @@ document {
 
 undocumented {
 	(net, Matroid),
-	(independentSets, Matroid, Set),
-	(independentSets, Matroid, List)
+	writeToString,
+	(writeToString, Thing),
+	rescalingRepresentative,
+	(rescalingRepresentative, Matrix, List),
+	coordinatingPath,
+	(coordinatingPath, Matroid),
+	kruskalSpanningForest,
+	(kruskalSpanningForest, Graph)
 }

@@ -1,11 +1,10 @@
 newPackage("Matroids",
 	AuxiliaryFiles => true,
-	Version => "1.5.3",
-	Date => "June 4, 2022",
+	Version => "1.6.0",
+	Date => "November 7, 2022",
 	Authors => {{
 		Name => "Justin Chen",
-		Email => "jchen@math.berkeley.edu",
-		HomePage => "https://math.berkeley.edu/~jchen"}},
+		Email => "jchen@math.berkeley.edu"}},
 	Headline => "a package for computations with matroids",
 	Keywords => {"Matroids"},
 	HomePage => "https://github.com/jchen419/Matroids-M2",
@@ -80,6 +79,15 @@ export {
 	"FlatOrder",
 	"cogeneratorChowRing",
 	"idealOrlikSolomonAlgebra",
+	"isNonCrossing",
+	"isPositivelyOriented",
+	"positiveOrientation",
+	"isPositivelyOrientable",
+	"kruskalSpanningForest",
+	"coordinatingPath",
+	"rescalingRepresentative",
+	"searchRepresentation",
+	"Attempts",
 	"setRepresentation",
 	"getRepresentation",
 	"storedRepresentation",
@@ -114,6 +122,7 @@ Matroid == Matroid := (M, N) -> M.groundSet === N.groundSet and set bases M === 
 
 matroid = method(Options => {EntryMode => "bases", ParallelEdges => {}, Loops => {}})
 matroid (List, List) := Matroid => opts -> (E, L) -> (
+	L = unique L;
 	if #L > 0 and not instance(L#0, Set) then L = indicesOf(E, L);
 	G := set(0..<#E);
 	B := if opts.EntryMode == "bases" then ( if #L == 0 then error "matroid: There must be at least one basis" else L )
@@ -622,7 +631,7 @@ elementaryQuotient (Matroid, List) := Matroid => o -> (M, K) -> (
 
 -----------------------------------------------------------------
 
-truncate (Set, Matroid) := Matroid => (F, M) -> (
+truncate (Set, Matroid) := {} >> o -> (F, M) -> (
     if not (set flats M)#?F then (
 	error "truncate: Expected a set that is a flat of the matroid."
 	);
@@ -630,11 +639,11 @@ truncate (Set, Matroid) := Matroid => (F, M) -> (
     e := max toList M'.groundSet;
     M'/{e}
 )
-truncate Matroid := Matroid => M -> truncate(M.groundSet, M)
-truncate (ZZ, Matroid) := Matroid => (i, M) -> (
+truncate Matroid := {} >> o -> M -> truncate(M.groundSet, M, o)
+truncate (ZZ, Matroid) := {} >> o -> (i, M) -> (
     if i < 0 then error "truncate: Expected a non-negative integer.";
     if i == 0 then M
-    else truncate(i - 1, truncate M)
+    else truncate(i - 1, truncate(M, o), o)
     )
 
 -----------------------------------------------------------------
@@ -984,6 +993,131 @@ idealOrlikSolomonAlgebra Matroid := Ideal => opts -> M -> (
 	-- return trim ideal apply(Cir,c->sum for i from 0 to length c - 1 list 
 		-- product for j from 0 to length c - 1 list if i == j then 1 
 		-- else (-1)^j*e#j);
+)
+
+------------------------------------------
+-- Positive Orientability (cf. Thm 5.2 in https://arxiv.org/pdf/1310.4159.pdf)
+------------------------------------------
+
+isNonCrossing = method()
+isNonCrossing (List, List) := Boolean => (C, D) -> (  -- assumes C and D are disjoint
+    (minC, maxC, minD, maxD) := (min C, max C, min D, max D);
+    (minC < minD and maxC > maxD) or (minD < minC and maxD > maxC)
+)
+isNonCrossing (Set, Set) := Boolean => (C, D) -> isNonCrossing(toList C, toList D)
+
+isPositivelyOriented = method()
+isPositivelyOriented Matroid := Boolean => M -> (
+    all(circuits M, C -> all(select(circuits dual M, D -> #(D * C) == 0), D -> isNonCrossing(C, D)))
+)
+
+positiveOrientation = method()
+positiveOrientation Matroid := List => M -> (
+    aut := getIsos(M, M);
+    checkedPerms := new MutableHashTable;
+    for phi in permutations (#M_*) do (
+        if checkedPerms#?phi then continue;
+        if isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits") then return phi;
+        scan(aut, f -> checkedPerms#(phi_f) = 1);
+    );
+    null
+    -- any(permutations (#M_*), phi -> isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits"))
+)
+
+isPositivelyOrientable = method()
+isPositivelyOrientable Matroid := Boolean => M -> positiveOrientation M =!= null
+
+-- Search for representations
+
+kruskalSpanningForest = method()
+kruskalSpanningForest Graph := Graph => G -> (
+    comps := new MutableList from (vertices G/(v -> set{v}));
+    k := #connectedComponents G;
+    graph(vertices G, for e in sort edges G list (
+        if #comps == k then break;
+        ic := select(2, comps, c -> #(c*e) > 0);
+        if #ic == 1 then continue;
+        comps = append(delete(ic#0, delete(ic#1, comps)), ic#0 + ic#1);
+        e
+    ))
+)
+
+coordinatingPath = method(Options => {Outputs => "withBasis"})
+coordinatingPath Matroid := List => opts -> M -> (
+    if not M.cache#?"coordinatingPath" then M.cache#"coordinatingPath" = (
+        B := sort toList first bases M;
+        D := sort toList (M.groundSet - B);
+        S := toList(0..<rank M);
+        zeroPos := apply(D, d -> (C := fundamentalCircuit(M, set B, d); select(S, i -> not member(B#i, C))));
+        BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
+        onePos := (edges kruskalSpanningForest BG)/toList/sort;
+        M.cache#"coordinatingPathBasis" = apply(onePos, p -> (
+            b := if member(p#0, B) then p#0 else p#1;
+            (position(S, i -> B#i === b), first(p - set{b}))
+        )) | apply(#B, i -> (i, B#i));
+        onePos
+    );
+    if opts.Outputs === "withBasis" then M.cache#"coordinatingPathBasis" else M.cache#"coordinatingPath"
+)
+
+-- randomNonzero = method()
+randomNonzero := k -> ( a := random k; while a == 0 do a = random k; a )
+
+rescalingRepresentative = method()
+rescalingRepresentative (Matrix, List) := Matrix => (A, O) -> (
+    k := ring A;
+    r := numrows A; -- assumes A is full rank
+    B := take(O, -r)/last;
+    A = inverse(A_B) * A;
+    colHash := hashTable((a,b) -> flatten{a, b}, drop(O, -r) /reverse);
+    E := id_(k^r);
+    C := transpose matrix{(flatten apply(select(keys colHash, k -> not instance(colHash#k, ZZ)), c -> (
+        apply(drop(colHash#c, 1), row -> (
+            A_((colHash#c)#0,c)*E^{(colHash#c)#0} - A_(row,c)*E^{row}
+        ))
+    )))/transpose};
+    if debugLevel > 1 then << "rescalingRepresentative: " << C << endl;
+    K := gens ker C;
+    D := diagonalMatrix flatten entries sum(numcols K, i -> randomNonzero k * K_{i}); -- attempts to get element of K with all nonzero entries
+    A = D*A;
+    A*inverse diagonalMatrix apply(numcols A, j -> if colHash#?j then A_(if instance(colHash#j, ZZ) then colHash#j else colHash#j#0, j) else if member(j, B) then A_(position(B, p -> j == p), j) else 1_k)
+)
+
+searchRepresentation = method(Options => {symbol Attempts => 1000})
+searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
+    (r, n) := (rank M, #M.groundSet);
+    B := sort toList first bases M;
+    D := sort toList (M.groundSet - B);
+    zeroPos := apply(D, d -> (C := fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
+    O := coordinatingPath M;
+    Z := flatten apply(#D, j -> apply(zeroPos#j, i -> (i, D#j)));
+    knownPos := O | Z | flatten apply(r, i -> apply(delete(i, toList(0..<r)), j -> (i, B#j)));
+    unknowns := toList((0,0)..(r-1,n-1)) - set knownPos;
+    if debugLevel > 0 then << "searchRepresentation: #unknowns = " << #unknowns << endl;
+    A := new MutableMatrix from map(k^r, k^n, 0);
+    scan(O, p -> A_p = 1);
+    -- M.cache#"representationCandidate" = matrix A;
+    (viable, total) := (0, 0);
+    maxAttempts := min(opts.Attempts, (k.order - 1)^(#unknowns));
+    foundRep := while total < maxAttempts do (
+        total = total + 1;
+        if debugLevel > 0 then << "\rsearchRepresentation: Testing candidate " << viable << "/" << total << " ... " << flush;
+        scan(unknowns, u -> A_u = randomNonzero k );
+        N := matroid matrix A;
+        if #bases N === #bases M then (
+            viable = viable + 1;
+            if areIsomorphic(M, N) then break true;
+        );
+    );
+    if foundRep === null then (
+        msg := if total === (k.order - 1)^(#unknowns) then (
+            (if total == 1 then "" else "likely ") | "no representation exists"
+        ) else "please try again";
+        print("searchRepresentation: Could not find representation - " | msg);
+        return;
+    );
+    A = matrix A_((sort pairs isomorphism(M, N))/last); -- makes matroid A == M
+    rescalingRepresentative(A, O)
 )
 
 setRepresentation = method()
