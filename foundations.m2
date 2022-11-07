@@ -107,14 +107,14 @@ specificPasture String := Pasture => name -> (
     if name === "F1pm" then pasture(2*id1, id1, {})
     else if name === "F2" then pasture(id0, z01, {})
     else if name === "F3" then pasture(2*id1, id1, {{id1, id1}})
-    else if n0 === "D" then pasture([x], "x-1")
-    else if n0 === "G" then pasture([x], "x+x^2")
-    else if n0 === "H" then pasture([x], "-x^3, x+x^(-1)")
-    else if n0 === "I" then pasture([z,t], "z + z^2, -z^2 + t, z^4 + z*t")
+    else if n0 === "D" then pasture([getSymbol "x"], "x-1")
+    else if n0 === "G" then pasture([getSymbol "x"], "x+x^2")
+    else if n0 === "H" then pasture([getSymbol "x"], "-x^3, x+x^(-1)")
+    else if n0 === "I" then pasture(["z","t"]/getSymbol, "z + z^2, -z^2 + t, z^4 + z*t")
     else if n0 === "K" then pasture(id0, z01, {{z01, z01}})
     else if n0 === "S" then pasture(2*id1, id1, {{0*id1, 0*id1}})
-    else if n0 === "U" then pasture([x,y], "x+y")
-    else if n0 === "V" then pasture([x,y,z,s,t], "x*y*s*t+y*z*s,s*t+z*s,t+y^(-1),s^(-1)+x,y*z+x*y")
+    else if n0 === "U" then pasture(["x","y"]/getSymbol, "x+y")
+    else if n0 === "V" then pasture(["x","y","z","s","t"]/getSymbol, "x*y*s*t+y*z*s,s*t+z*s,t+y^(-1),s^(-1)+x,y*z+x*y")
     else error "specificPasture: Expected name to be one of: D, F1pm, F2, F3, G, H, I, K, S, U, V"
 )
 specificPasture Symbol := Pasture => s -> specificPasture toString s
@@ -224,7 +224,7 @@ myMinPres Matrix := Sequence => A -> (
     -- customized code from minimalPresentation(Module, Strategy => 2)
     (g,ch) := smithNormalForm(A, ChangeMatrix => {true, false}, KeepZeroes => true);
     recursionLimit = recursionLimitStore;
-    (D,S,T) = snf g;
+    (D,S,T) := snf g;
     (g,ch) = (D, S*ch);
     piv := select(pivots g, ij -> abs g_ij === 1);
     (rows, cols) := (piv/first, piv/last);
@@ -368,7 +368,7 @@ fiberCoproduct (Matrix, Matrix) := Module => (f1, f2) -> (
     if f1.source =!= f2.source then error "fiberCoproduct: Expected same source module";
     (A1, A2) := (f1, f2)/matrix;
     sourceGens := mingens f1.source;
-    if numcols sourceGens == 0 then return G1 ++ G2;
+    if numcols sourceGens == 0 then return (coker f1) ++ (coker f2);
     rels := matrix{apply(numcols sourceGens, i -> A1 * sourceGens_{i} || -A2 * sourceGens_{i})};
     coker(rels | (relations f1.target ++ relations f2.target))
 )
@@ -461,49 +461,10 @@ h3 := (i, m) -> m_(delete(i-1,#m))
 chooseHyp := (L,f,g) -> L#(position(L,h -> isSubset (f+g,h)))
 containmentTable := (LF,LH) -> hashTable apply(LH, h -> set select(LF, f -> isSubset (f,h)) => h)
 
-kruskalSpanningForest = method()
-kruskalSpanningForest Graph := Graph => G -> (
-    comps := new MutableList from (vertices G/(v -> set{v}));
-    k := #connectedComponents G;
-    graph(vertices G, for e in sort edges G list (
-        if #comps == k then break;
-        ic := select(2, comps, c -> #(c*e) > 0);
-        if #ic == 1 then continue;
-        comps = append(delete(ic#0, delete(ic#1, comps)), ic#0 + ic#1);
-        e
-    ))
-)
-
-TEST /// -- cf. https://github.com/Macaulay2/M2/issues/2403
-G = graph(toList(0..8), {{0,2},{0,4},{0,5},{0,7},{0,8},{1,2},{1,4},{1,5},{1,6},{1,7},{1,8},{3,4},{3,5},{3,6},{3,7},{3,8}})
-G = graph(toList(0..9), {{0,4},{1,4},{2,4},{3,4},{0,6},{5,6},{1,7},{5,7},{1,8},{2,8},{5,8},{1,9},{2,9},{3,9},{5,9}})
-assert isConnected G
-assert(#kruskalSpanningForest G == #vertices G - 1)
-assert(#edges spanningForest G == #vertices G - 2)
-///
-
-coordinatingPath = method(Options => {Outputs => "withBasis"})
-coordinatingPath Matroid := List => opts -> M -> (
-    if not M.cache#?"coordinatingPath" then M.cache#"coordinatingPath" = (
-        B := sort toList first bases M;
-        D := sort toList (M.groundSet - B);
-        S := toList(0..<rank M);
-        zeroPos := apply(D, d -> (C := fundamentalCircuit(M, set B, d); select(S, i -> not member(B#i, C))));
-        BG := graph(B | D, flatten apply(#D, i -> apply(B - set(B_(zeroPos#i)), j -> {j, D#i})));
-        onePos := (edges kruskalSpanningForest BG)/toList/sort;
-        M.cache#"coordinatingPathBasis" = apply(onePos, p -> (
-            b := if member(p#0, B) then p#0 else p#1;
-            (position(S, i -> B#i === b), first(p - set{b}))
-        )) | apply(#B, i -> (i, B#i));
-        onePos
-    );
-    if opts.Outputs === "withBasis" then M.cache#"coordinatingPathBasis" else M.cache#"coordinatingPath"
-)
-
 foundation = method(Options => {Strategy => null, HasF7Minor => null, HasF7dualMinor => null})
 foundation Matroid := Foundation => opts -> M -> (
     if M.cache#?"foundation" and (opts.Strategy === null or M.cache#"foundation".cache#"strategy" === opts.Strategy) then M.cache#"foundation" else M.cache#"foundation" = (
-    dbg = debugLevel;
+    dbg := debugLevel;
     debugLevel = 0;
     r := rank M;
     cacheList := {};
@@ -863,7 +824,7 @@ fullRankSublattice Pasture := List => P -> (
                 B := G#i#1#0;
                 isType2Pair := G#i#0#0 == G#i#0#1;
                 if isType2Pair then B = B | G#i#1#1;
-                coeff = (gens ker((L_(toList(0..<i+k)) | B)^freePart))_{0};
+                coeff := (gens ker((L_(toList(0..<i+k)) | B)^freePart))_{0};
                 if isType2Pair and abs((flatten entries coeff)#-2) != 1 then (
                     L = submatrix(L, , toList(0..<i+k)) | G#i#1#0 | submatrix(L, , toList(i+k+1..<g));
                     (B, coeff) = (B_{1,0}, coeff^{0..<i+k,i+k+1,i+k});
@@ -873,7 +834,7 @@ fullRankSublattice Pasture := List => P -> (
             )
         );
         type4Data := apply(#S, i -> apply(S#i, h -> apply(h#0, e -> (
-            B = submatrix(L, , toList(0..<i));
+            B := submatrix(L, , toList(0..<i));
             (BQQ, eQQ) := (sub(B^freePart, QQ), sub(e^freePart, QQ));
             C := flatten entries(eQQ // BQQ);
             c := if #C == 0 then -1 else lcm(C/denominator);
@@ -941,7 +902,7 @@ morphisms (Pasture, Pasture) := List => opts -> (P1, P2) -> (
     -- Main loop
     pastureMorphism(P1, P2, unique flatten for phi in H list (
         D := phi * A^torsPart1;
-        torsType4 = apply(#type4Data, i -> apply(type4Data#i, t -> {phi*t#0#0^torsPart1, phi*t#1#0^torsPart1}));
+        torsType4 := apply(#type4Data, i -> apply(type4Data#i, t -> {phi*t#0#0^torsPart1, phi*t#1#0^torsPart1}));
         if not all(torsType4#0, p -> member(set{p#0 % P2star, p#1 % P2star}, fundPairsP2set)) then continue;
         delta := apply(r1, i -> phi * torsLatticeGens#i);
         C0 := z0;
@@ -1200,12 +1161,12 @@ assert Equation(144, #morphisms(F, F))
 assert Equation(72, #morphisms(F, F, FindIso => true))
 ///
 
-TEST /// -- |Aut(V)| < |Aut(F_V)|
+TEST /// -- |Aut(V8)| < |Aut(F_V8)|
 V8 = specificMatroid "vamos"
-F = foundation V8
 assert Equation(64, #getIsos(V8, V8))
-elapsedTime mor = morphisms(F, F, FindIso => true); -- ~ 270 seconds
-assert(tally(mor/det) === new Tally from {-1 => 384, 1 => 384})
+-- F = foundation V8
+-- elapsedTime mor = morphisms(F, F, FindIso => true); -- ~ 270 seconds
+-- assert(tally(mor/det) === new Tally from {-1 => 384, 1 => 384})
 ///
 
 ------------------------------------------
@@ -1243,71 +1204,11 @@ representations (Matroid, GaloisField) := List => opts -> (M, k) -> (
     )), O))
 )
 
-randomNonzero = method()
-randomNonzero Ring := RingElement => k -> ( a := random k; while a == 0 do a = random k; a )
-
-searchRepresentation = method(Options => {symbol Attempts => 1000})
-searchRepresentation (Matroid, GaloisField) := Matrix => opts -> (M, k) -> (
-    (r, n) := (rank M, #M.groundSet);
-    B := sort toList first bases M;
-    D := sort toList (M.groundSet - B);
-    zeroPos := apply(D, d -> (C := fundamentalCircuit(M, set B, d); select(toList(0..<r), i -> not member(B#i, C))));
-    O := coordinatingPath M;
-    Z := flatten apply(#D, j -> apply(zeroPos#j, i -> (i, D#j)));
-    knownPos := O | Z | flatten apply(r, i -> apply(delete(i, toList(0..<r)), j -> (i, B#j)));
-    unknowns := toList((0,0)..(r-1,n-1)) - set knownPos;
-    if debugLevel > 0 then << "searchRepresentation: #unknowns = " << #unknowns << endl;
-    A := new MutableMatrix from map(k^r, k^n, 0);
-    scan(O, p -> A_p = 1);
-    -- M.cache#"representationCandidate" = matrix A;
-    (viable, total) := (0, 0);
-    maxAttempts := min(opts.Attempts, (k.order - 1)^(#unknowns));
-    foundRep := while total < maxAttempts do (
-        total = total + 1;
-        if debugLevel > 0 then << "\rsearchRepresentation: Testing candidate " << viable << "/" << total << " ... " << flush;
-        scan(unknowns, u -> A_u = randomNonzero k );
-        N := matroid matrix A;
-        if #bases N === #bases M then (
-            viable = viable + 1;
-            if areIsomorphic(M, N) then break true;
-        );
-    );
-    if foundRep === null then (
-        msg := if total === (k.order - 1)^(#unknowns) then (
-            (if total == 1 then "" else "likely ") | "no representation exists"
-        ) else "please try again";
-        print("searchRepresentation: Could not find representation - " | msg);
-        return;
-    );
-    A = matrix A_((sort pairs isomorphism(M, N))/last); -- makes matroid A == M
-    rescalingRepresentative(A, O)
-)
-
-rescalingRepresentative = method()
-rescalingRepresentative (Matrix, List) := Matrix => (A, O) -> (
-    k := ring A;
-    r := numrows A; -- assumes A is full rank
-    B := take(O, -r)/last;
-    A = inverse(A_B) * A;
-    colHash := hashTable((a,b) -> flatten{a, b}, drop(O, -r) /reverse);
-    E := id_(k^r);
-    C := transpose matrix{(flatten apply(select(keys colHash, k -> not instance(colHash#k, ZZ)), c -> (
-        apply(drop(colHash#c, 1), row -> (
-            A_((colHash#c)#0,c)*E^{(colHash#c)#0} - A_(row,c)*E^{row}
-        ))
-    )))/transpose};
-    if debugLevel > 1 then << "rescalingRepresentative: " << C << endl;
-    K := gens ker C;
-    D := diagonalMatrix flatten entries sum(numcols K, i -> randomNonzero k * K_{i}); -- attempts to get element of K with all nonzero entries
-    A = D*A;
-    A*inverse diagonalMatrix apply(numcols A, j -> if colHash#?j then A_(if instance(colHash#j, ZZ) then colHash#j else colHash#j#0, j) else if member(j, B) then A_(position(B, p -> j == p), j) else 1_k)
-)
-
 TEST ///
 N = matroid(toList(0..7), {{0,1,2,3},{0,1,4,5},{2,3,4,5},{0,2,4,6},{1,3,5,7},{1,2,6,7},{3,4,6,7},{0,5,6,7}}, EntryMode => "nonbases")
 N0 = (allMatroids(8,4))#128
 assert(N == N0)
-assert(pairTypes foundation N === hashTable apply({(1,1),(2,0),(3,1),(4,2)}, p -> ("type " | toString p#0, p#1)))
+assert(pairTypes foundation N === hashTable apply({(1,0),(2,1),(3,1),(4,2)}, p -> ("type " | toString p#0, p#1)))
 N1 = matroid(toList(0..8), {{0,1,2,3},{0,1,4,5},{0,2,4,6},{1,3,5,6},{1,2,4,7},{2,3,5,7},{3,4,6,7},{0,5,6,7},{0,1,4,8},{0,2,4,8},{0,3,4,8},{0,1,5,8},{2,3,5,8},{0,4,5,8},{1,4,5,8},{0,2,6,8},{0,4,6,8},{2,4,6,8},{2,3,7,8},{0,4,7,8},{2,5,7,8},{3,5,7,8},{1,6,7,8}}, EntryMode => "nonbases")
 assert areIsomorphic(foundation N1, specificPasture G)
 N2 = matroid(toList(0..8), {{0,1,2,3},{0,1,2,4},{0,1,3,4},{0,2,3,4},{1,2,3,4},{0,1,5,6},{2,3,5,6},{0,2,5,7},{1,4,5,7},{1,2,6,7},{3,4,6,7},{0,1,2,8},{0,1,3,8},{0,2,3,8},{1,2,3,8},{0,1,4,8},{0,2,4,8},{1,2,4,8},{0,3,4,8},{1,3,4,8},{2,3,4,8},{2,3,5,8},{0,4,5,8},{2,3,6,8},{0,4,6,8},{2,5,6,8},{3,5,6,8},{2,3,7,8},{0,4,7,8}}, EntryMode => "nonbases")
@@ -1321,46 +1222,6 @@ B = specificMatroid betsyRoss
 k = GF 4
 setRandomSeed 5
 elapsedTime searchRepresentation(B, k)
-///
-
-------------------------------------------
--- Positive Orientability (cf. Thm 5.2 in https://arxiv.org/pdf/1310.4159.pdf)
-------------------------------------------
-
-isNonCrossing = method()
-isNonCrossing (List, List) := Boolean => (C, D) -> (  -- assumes C and D are disjoint
-    (minC, maxC, minD, maxD) := (min C, max C, min D, max D);
-    (minC < minD and maxC > maxD) or (minD < minC and maxD > maxC)
-)
-isNonCrossing (Set, Set) := Boolean => (C, D) -> isNonCrossing(toList C, toList D)
-
-isPositivelyOriented = method()
-isPositivelyOriented Matroid := Boolean => M -> (
-    all(circuits M, C -> all(select(circuits dual M, D -> #(D * C) == 0), D -> isNonCrossing(C, D)))
-)
-
-positiveOrientation = method()
-positiveOrientation Matroid := List => M -> (
-    aut := getIsos(M, M);
-    checkedPerms := new MutableHashTable;
-    for phi in permutations (#M_*) do (
-        if checkedPerms#?phi then continue;
-        if isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits") then return phi;
-        scan(aut, f -> checkedPerms#(phi_f) = 1);
-    );
-    null
-    -- any(permutations (#M_*), phi -> isPositivelyOriented matroid(M_*, (circuits M)/(C -> C/(e -> phi#e)), EntryMode => "circuits"))
-)
-
-isPositivelyOrientable = method()
-isPositivelyOrientable Matroid := Boolean => M -> positiveOrientation M =!= null
-
-TEST ///
-V = specificMatroid "vamos"
-assert not isPositivelyOriented V
-assert isPositivelyOrientable V
-M = matroid(toList(0..<6), {{0,1,2},{0,3,4},{1,3,5}}, EntryMode => "nonbases")
-assert not isPositivelyOrientable M
 ///
 
 ------------------------------------------
