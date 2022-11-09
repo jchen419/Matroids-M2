@@ -1598,5 +1598,5 @@ set includedIndices
 -- Q: prefer type 1/2 pairs with coefficients of 1 when building fullRankSublattice? (Not entirely clear if this will actually lead to an improvement.)
 
 restart
-load "foundations.m2"
+load "Matroids/foundations.m2"
 debugLevel = 1
